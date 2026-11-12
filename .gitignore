@@ -39,3 +39,6 @@ Thumbs.db
 deploy/certs/*
 !deploy/certs/gen-certs.sh
 !deploy/certs/README.md
+
+# 设备凭证（含设备密钥，不入库）
+simulator/creds*.json

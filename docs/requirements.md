@@ -66,7 +66,7 @@
 
 | 编号 | 需求 | 说明 | 优先级 | 阶段 |
 |---|---|---|---|:-:|
-| FR-AUTH-01 | 设备签名认证 | clientId=deviceId，password=HMAC-SHA256(设备密钥, username+timestamp)；EMQX HTTP 认证器回调认证服务，失败返回明确原因 | P0 | M2 |
+| FR-AUTH-01 | 设备签名认证 | clientId=deviceId，username=毫秒时间戳（±5 分钟），password=HMAC-SHA256(设备密钥, clientId\|username)；EMQX HTTP 认证器回调认证服务，失败返回明确原因 | P0 | M1 |
 | FR-AUTH-02 | 设备主题 ACL | 设备只能发布/订阅自身主题子树；越权订阅被拒绝 | P0 | M2 |
 | FR-AUTH-03 | TLS 接入 | 8883 端口 TLS 1.2+；本地自签 CA 已在 M1 就绪；进阶双向 mTLS 在 M4 加固 | P1 | M2 |
 | FR-AUTH-04 | 用户认证 | 后台用户账号密码登录，JWT（access + refresh），接口鉴权 | P0 | M2 |

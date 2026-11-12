@@ -38,6 +38,7 @@
 |---|---|---|
 | MQTT Broker | EMQX 5.x 开源版（Docker） | 国产、中文文档全、集群/规则引擎/数据桥接/HTTP 认证钩子/WebSocket，国内 IoT 事实标准 |
 | 后端 | Java 21 + Spring Boot 3.x | 岗位匹配度最高；虚拟线程处理高并发连接 |
+| MQTT 客户端 | Eclipse Paho（Java）/ paho-mqtt（Python 模拟器） | 开源事实标准，企业项目最常用 |
 | 微服务 | Spring Cloud Alibaba（Nacos / Gateway / Sentinel） | 国内企业标准 |
 | ORM | MyBatis-Plus | 国内主流 |
 | 消息队列 | Kafka（EMQX 规则引擎直接桥接） | 削峰、解耦、多消费者 |
@@ -69,7 +70,7 @@
 1. **QoS 策略**：遥测 QoS1，消费端按 messageId 幂等去重；不滥用 QoS2。
 2. **遗嘱消息（LWT）**：设备异常断连由 Broker 代发下线消息；配合 EMQX 上下线事件 Webhook 更新 Redis 在线状态并推送前端。
 3. **共享订阅**：`$share/group/topic`，消费端多实例水平扩展、负载均衡。
-4. **设备认证**：clientId=deviceId，password=HMAC-SHA256(设备密钥, username+timestamp)；EMQX HTTP 认证器回调认证服务（结果缓存 Redis）。对标阿里云 IoT 签名认证。
+4. **设备认证**：clientId=deviceId，username=毫秒时间戳（±5 分钟有效），password=小写十六进制 HMAC-SHA256(设备密钥, `clientId|username`)；EMQX HTTP 认证器回调认证服务（结果缓存 Redis），断线重连需重新签名；后端服务账号使用独立口令。对标阿里云 IoT 签名认证。
 5. **ACL**：EMQX HTTP ACL 回调，设备只能收发自己主题子树。
 6. **TLS :8883**（服务端证书起步，进阶双向 mTLS）。
 7. **Payload**：JSON 起步（按物模型校验），预留 Protobuf 演进方向。

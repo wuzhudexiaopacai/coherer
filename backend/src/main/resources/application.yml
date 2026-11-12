@@ -2,7 +2,7 @@ spring:
   application:
     name: coherer-backend
   datasource:
-    url: jdbc:postgresql://localhost:5432/coherer
+    url: jdbc:postgresql://localhost:5432/coherer?stringtype=unspecified
     username: coherer
     password: coherer123
     hikari:
@@ -28,7 +28,8 @@ mybatis-plus:
       logic-not-delete-value: 0
 
 server:
-  port: 8080
+  # 8080 常被本机其他服务占用，Coherer 固定使用 8081
+  port: 8081
 
 management:
   endpoints:
@@ -36,11 +37,20 @@ management:
       exposure:
         include: health,info,metrics
 
+logging:
+  level:
+    # 开发期输出认证拒绝原因，便于联调
+    com.github.wuzhudexiaopacai.internal.auth: DEBUG
+
 coherer:
   security:
     # AES-256-GCM 主密钥（Base64，32 字节）。仅开发默认值；生产从环境变量/密钥管理注入
     secret-key: Y29oZXJlci1kZXYtc2VjcmV0LWtleS0zMi1ieXRlcyE=
   mqtt:
-    # M2：后端作为共享订阅消费者接入 EMQX 时启用
     broker-host: localhost
     broker-port: 1883
+    # 后端服务账号：以该身份连接 EMQX 消费遥测（M2 起由认证回调校验）
+    ingest:
+      client-id: coherer-ingest
+      username: service
+      secret: coherer-ingest-dev-secret

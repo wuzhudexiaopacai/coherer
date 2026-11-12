@@ -142,7 +142,7 @@ sequenceDiagram
     participant R as Redis
     participant DB as PostgreSQL
 
-    D->>EMQX: CONNECT clientId=deviceId<br/>password=HMAC-SHA256(secret, username+ts)
+    D->>EMQX: CONNECT clientId=deviceId<br/>username=毫秒时间戳<br/>password=hex(HMAC-SHA256(secret, clientId|username))
     EMQX->>AUTH: HTTP POST /internal/auth/mqtt
     AUTH->>R: 查询认证缓存
 
@@ -156,12 +156,12 @@ sequenceDiagram
     AUTH->>AUTH: 校验签名、时间戳（±5 分钟）、设备状态
 
     alt 校验通过
-        AUTH-->>EMQX: 200 allow
+        AUTH-->>EMQX: 200 {"result":"allow"}
         EMQX-->>D: CONNACK 成功
         EMQX->>AUTH: 上线事件 Webhook
         AUTH->>R: 状态置 online
     else 校验失败
-        AUTH-->>EMQX: 403 deny（附原因码）
+        AUTH-->>EMQX: 200 {"result":"deny"}
         EMQX-->>D: CONNACK Not authorized
     end
 ```
@@ -660,7 +660,7 @@ flowchart LR
         R["Redis<br/>:6379"]
     end
 
-    BE["Spring Boot<br/>本机 :8080"]
+    BE["Spring Boot<br/>本机 :8081"]
     SIM["Python 模拟器<br/>本机进程"]
     WEB["Vue 3 dev server<br/>:5173"]
 

@@ -12,6 +12,25 @@ services:
       - "8084:8084"     # MQTT over WSS
       - "18083:18083"   # 管理控制台
     environment:
+      # HTTP 认证：回调宿主机后端（设备 HMAC 签名 / 后端服务账号）
+      EMQX_AUTHENTICATION: |
+        [
+          {
+            enable = true
+            mechanism = password_based
+            backend = http
+            method = post
+            url = "http://host.docker.internal:8081/internal/auth/mqtt"
+            body {
+              clientid = "$${clientid}"
+              username = "$${username}"
+              password = "$${password}"
+            }
+            headers {
+              "Content-Type" = "application/json"
+            }
+          }
+        ]
       # TLS 监听器证书（首次启动前先执行 deploy/certs/gen-certs.sh）
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
@@ -19,6 +38,9 @@ services:
       EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
       EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
       EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/certs/ca.crt
+    extra_hosts:
+      # 让容器内可通过 host.docker.internal 访问宿主机（Linux 兼容）
+      - "host.docker.internal:host-gateway"
     volumes:
       - emqx-data:/opt/emqx/data
       - emqx-log:/opt/emqx/log

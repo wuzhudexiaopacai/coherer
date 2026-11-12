@@ -37,6 +37,7 @@
 |---|---|
 | MQTT Broker | EMQX 5.x（集群 / 规则引擎 / 数据桥接 / HTTP 认证钩子） |
 | 后端 | Java 21 + Spring Boot 3.x（虚拟线程），Spring Cloud Alibaba（Nacos / Gateway / Sentinel） |
+| MQTT 客户端 | Eclipse Paho（Java 后端）/ paho-mqtt（Python 模拟器） |
 | ORM | MyBatis-Plus（分页插件 + 防全表更新） |
 | 消息队列 | Kafka |
 | 时序数据库 | TDengine 3.x（超级表=产品，子表=设备） |
@@ -61,20 +62,22 @@ cd deploy && docker compose up -d
 
 # 2. 启动后端
 cd ../backend && mvn spring-boot:run
-# 健康检查: http://localhost:8080/actuator/health
+# 健康检查: http://localhost:8081/actuator/health
 
-# 3. 启动设备模拟器（TLS 连接 8883，校验本地 CA；默认 5 台设备，每 5 秒上报）
+# 3. 注册演示设备并生成凭证（EMQX 已开启签名认证，匿名连接会被拒绝）
 cd ../simulator
 pip install -r requirements.txt
-python simulator.py --count 10 --tls
+python register_devices.py --count 5
 
-# 4. 打开 EMQX 控制台查看消息流
-#    http://localhost:18083  (admin / public)
-#    问题诊断 → WebSocket 客户端 → 订阅 default/#
-#    （EMQX 默认 ACL 会拒绝裸 #，M2 接入自定义 ACL 后放开）
+# 4. 启动设备模拟器（TLS + HMAC 签名认证）
+python simulator.py --credentials creds.json --tls
+
+# 5. 查看数据
+#    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
+#    EMQX 控制台: http://localhost:18083 (admin / public) 查看连接与流量
 ```
 
-> ⚠️ M1 阶段 EMQX 允许匿名连接，仅为开发便利。TLS 加密通道已就绪（本地自签 CA，8883 端口）；设备签名认证 + ACL 将在 M2 实现，双向 mTLS 在 M4 加固。
+> ⚠️ M1 阶段 EMQX 已开启 **HTTP 签名认证**（clientId=deviceId，username=时间戳，password=HMAC-SHA256），匿名设备无法连接；设备 ACL、在线状态与真实时序库在 M2 实现。
 
 ## 目录结构
 

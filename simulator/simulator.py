@@ -3,14 +3,23 @@
 模拟一批虚拟设备接入 EMQX 并周期上报遥测数据。
 主题规划与平台一致: {tenantId}/{deviceId}/thing/property/report (QoS1)
 
+认证方式（EMQX 开启 HTTP 认证后必须使用凭证）:
+    username = 毫秒时间戳
+    password = hex(HMAC-SHA256(deviceSecret, deviceId + "|" + username))
+
 用法:
-    python simulator.py                       # 默认 5 台设备（明文 1883）
-    python simulator.py --count 100 --interval 3
-    python simulator.py --tls                 # TLS 8883，校验本地自签 CA
-    python simulator.py --tls --insecure      # 跳过证书校验（仅排障用）
+    python simulator.py                            # 匿名连接（仅 EMQX 未开认证时可用）
+    python simulator.py --credentials creds.json   # 使用注册设备凭证（认证模式）
+    python simulator.py --count 100 --interval 3   # 匿名模拟 100 台设备
+    python simulator.py --tls                      # TLS 8883（校验本地自签 CA）
+
+凭证文件格式（由设备注册接口返回结果整理）:
+    [{"deviceId": "dev_xxx", "secret": "..."}]
 """
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import random
@@ -32,21 +41,28 @@ class VirtualDevice(threading.Thread):
     """一台虚拟设备：独立 MQTT 连接 + 周期上报温度/湿度（随机游走）。"""
 
     def __init__(self, host, port, tenant, device_id, interval,
-                 tls=False, ca_file=None, insecure=False):
+                 tls=False, ca_file=None, insecure=False, device_secret=None):
         super().__init__(daemon=True, name=f"dev-{device_id}")
         self.host = host
         self.port = port
         self.device_id = device_id
+        self.device_secret = device_secret
         self.interval = interval
         self.topic = f"{tenant}/{device_id}/thing/property/report"
         self.temperature = random.uniform(18, 30)
         self.humidity = random.uniform(40, 65)
+
+        # 认证模式下 clientId 必须是设备唯一标识，与平台注册信息一致
+        client_id = device_id if device_secret else f"sim-{device_id}"
         self.client = mqtt.Client(
             callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-            client_id=f"sim-{device_id}",
+            client_id=client_id,
         )
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+
+        if device_secret:
+            self._refresh_auth()
 
         if tls:
             if insecure:
@@ -55,6 +71,15 @@ class VirtualDevice(threading.Thread):
                 print(f"[{device_id}] 警告: 已跳过服务端证书校验，仅限排障")
             else:
                 self.client.tls_set(ca_certs=ca_file)
+
+    def _refresh_auth(self) -> None:
+        """重新生成时间戳签名，保证断线重连时凭证仍然有效。"""
+        username = str(int(time.time() * 1000))
+        content = f"{self.device_id}|{username}"
+        password = hmac.new(
+            self.device_secret.encode(), content.encode(), hashlib.sha256
+        ).hexdigest()
+        self.client.username_pw_set(username, password)
 
     def run(self) -> None:
         try:
@@ -66,6 +91,8 @@ class VirtualDevice(threading.Thread):
         seq = 0
         while not STOP.is_set():
             seq += 1
+            if self.device_secret:
+                self._refresh_auth()
             self._drift()
             payload = {
                 "id": seq,
@@ -102,9 +129,11 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=None,
                         help="EMQX 端口 (默认 1883；--tls 时默认 8883)")
     parser.add_argument("--tenant", default="default", help="租户 ID (默认 default)")
-    parser.add_argument("--count", type=int, default=5, help="模拟设备数量 (默认 5)")
+    parser.add_argument("--count", type=int, default=5, help="匿名模拟设备数量 (默认 5)")
     parser.add_argument("--interval", type=float, default=5.0, help="上报间隔秒 (默认 5)")
-    parser.add_argument("--prefix", default="dev", help="设备 ID 前缀 (默认 dev)")
+    parser.add_argument("--prefix", default="dev", help="匿名设备 ID 前缀 (默认 dev)")
+    parser.add_argument("--credentials", default=None,
+                        help="设备凭证 JSON 文件（认证模式）")
     parser.add_argument("--tls", action="store_true", help="使用 TLS 连接")
     parser.add_argument("--ca-file", default=None,
                         help="CA 证书路径 (默认 deploy/certs/ca.crt)")
@@ -120,15 +149,27 @@ def main() -> None:
         print("请先运行: cd deploy/certs && ./gen-certs.sh")
         raise SystemExit(1)
 
-    devices = [
-        VirtualDevice(args.host, port, args.tenant, f"{args.prefix}-{i:04d}", args.interval,
-                      tls=args.tls, ca_file=ca_file, insecure=args.insecure)
-        for i in range(1, args.count + 1)
-    ]
+    if args.credentials:
+        with open(args.credentials, encoding="utf-8") as f:
+            credentials = json.load(f)
+        devices = [
+            VirtualDevice(args.host, port, args.tenant, item["deviceId"], args.interval,
+                          tls=args.tls, ca_file=ca_file, insecure=args.insecure,
+                          device_secret=item["secret"])
+            for item in credentials
+        ]
+        mode = "认证设备"
+    else:
+        devices = [
+            VirtualDevice(args.host, port, args.tenant, f"{args.prefix}-{i:04d}", args.interval,
+                          tls=args.tls, ca_file=ca_file, insecure=args.insecure)
+            for i in range(1, args.count + 1)
+        ]
+        mode = "匿名设备"
 
     signal.signal(signal.SIGINT, lambda *_: STOP.set())
-    mode = "TLS" if args.tls else "TCP"
-    print(f"启动 {len(devices)} 台虚拟设备 → {mode} {args.host}:{port} (Ctrl+C 退出)")
+    transport = "TLS" if args.tls else "TCP"
+    print(f"启动 {len(devices)} 台{mode} → {transport} {args.host}:{port} (Ctrl+C 退出)")
 
     for device in devices:
         device.start()
