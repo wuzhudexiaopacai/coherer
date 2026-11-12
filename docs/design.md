@@ -147,7 +147,7 @@ sequenceDiagram
     AUTH->>R: 查询认证缓存
 
     alt 缓存命中
-        R-->>AUTH: secretHash + 设备状态
+        R-->>AUTH: secretCipher + 设备状态
     else 缓存未命中
         AUTH->>DB: 查询设备
         AUTH->>R: 写入缓存 TTL 5 分钟
@@ -428,7 +428,7 @@ erDiagram
         bigint product_id FK
         varchar device_id UK "设备唯一ID"
         varchar name "设备名"
-        varchar secret_hash "密钥哈希"
+        varchar secret_cipher "AES-GCM 密文"
         varchar status "未激活/在线/离线/禁用"
         jsonb tags "标签"
         timestamp last_online_at
@@ -546,7 +546,7 @@ VALUES (NOW, 23.5, 55.0);
 
 | 键模式 | 类型 | TTL | 用途 |
 |---|---|---|---|
-| `coherer:auth:device:{deviceId}` | String(JSON) | 5 min | 设备认证缓存（secretHash/状态） |
+| `coherer:auth:device:{deviceId}` | String(JSON) | 5 min | 设备认证缓存（secretCipher/状态） |
 | `coherer:status:device:{deviceId}` | String | 无 | 在线状态 `1`/`0`，上下线事件维护 |
 | `coherer:latest:device:{deviceId}` | Hash | 24 h | 最新遥测快照（属性→值） |
 | `coherer:cmd:{commandId}` | String | 命令超时 + 5 min | 命令状态缓存，避免回调丢失 |
