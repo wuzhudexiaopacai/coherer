@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: coherer-backend
+  datasource:
+    url: jdbc:postgresql://localhost:5432/coherer
+    username: coherer
+    password: coherer123
+    hikari:
+      maximum-pool-size: 10
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id            # 雪花 ID
+      logic-delete-field: deleted   # 逻辑删除（实体含 deleted 字段时生效）
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+coherer:
+  mqtt:
+    # M2：后端作为共享订阅消费者接入 EMQX 时启用
+    broker-host: localhost
+    broker-port: 1883

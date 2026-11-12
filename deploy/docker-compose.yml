@@ -1,0 +1,69 @@
+name: coherer
+
+services:
+  emqx:
+    image: emqx/emqx:5.8.3
+    container_name: coherer-emqx
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT
+      - "8883:8883"     # MQTT over TLS
+      - "8083:8083"     # MQTT over WebSocket（前端实时数据）
+      - "8084:8084"     # MQTT over WSS
+      - "18083:18083"   # 管理控制台
+    environment:
+      # TLS 监听器证书（首次启动前先执行 deploy/certs/gen-certs.sh）
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
+      EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/certs/ca.crt
+      EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
+      EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
+      EMQX_LISTENERS__WSS__DEFAULT__SSL_OPTIONS__CACERTFILE: /opt/emqx/etc/certs/ca.crt
+    volumes:
+      - emqx-data:/opt/emqx/data
+      - emqx-log:/opt/emqx/log
+      - ./certs:/opt/emqx/etc/certs:ro
+    healthcheck:
+      test: ["CMD", "emqx", "ctl", "status"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: coherer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: coherer
+      POSTGRES_USER: coherer
+      POSTGRES_PASSWORD: coherer123   # 仅本地开发，生产从 .env / 密钥管理注入
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coherer -d coherer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: coherer-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  emqx-data:
+  emqx-log:
+  pg-data:
+  redis-data:
