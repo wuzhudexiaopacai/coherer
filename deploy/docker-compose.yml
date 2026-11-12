@@ -84,8 +84,21 @@ services:
       timeout: 3s
       retries: 5
 
+  tdengine:
+    image: tdengine/tdengine:3.3.6.0
+    container_name: coherer-tdengine
+    restart: unless-stopped
+    ports:
+      - "6030:6030"     # native
+      - "6041:6041"     # REST / WebSocket（JDBC 走这里）
+    volumes:
+      - td-data:/var/lib/taos
+      - td-log:/var/log/taos
+
 volumes:
   emqx-data:
   emqx-log:
   pg-data:
   redis-data:
+  td-data:
+  td-log:

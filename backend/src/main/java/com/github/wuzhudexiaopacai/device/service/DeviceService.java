@@ -14,6 +14,7 @@ import com.github.wuzhudexiaopacai.device.vo.DeviceVO;
 import com.github.wuzhudexiaopacai.product.entity.Product;
 import com.github.wuzhudexiaopacai.product.mapper.ProductMapper;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
+import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
 
     private final ProductMapper productMapper;
     private final SecretCipher secretCipher;
+    private final ShadowService shadowService;
 
     @Transactional(rollbackFor = Exception.class)
     public List<DeviceRegisterResult> register(DeviceRegisterRequest request) {
@@ -63,6 +65,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
             results.add(new DeviceRegisterResult(deviceId, name, secret));
         }
         saveBatch(devices);
+        shadowService.createForDevices(devices);
         return results;
     }
 

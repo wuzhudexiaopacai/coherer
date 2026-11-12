@@ -87,7 +87,7 @@
 |---|---|---|---|:-:|
 | FR-DEV-01 | 设备注册 | 单个/批量注册，自动生成 deviceId 与随机密钥（密钥以 AES-256-GCM 加密存储） | P0 | M1 |
 | FR-DEV-02 | 设备状态机 | 未激活 / 在线 / 离线 / 禁用，状态流转见设计文档 | P0 | M2 |
-| FR-DEV-03 | 在线状态判定 | LWT + EMQX 上下线事件 Webhook 双通道；状态写入 Redis 并暴露给前端 | P0 | M2 |
+| FR-DEV-03 | 在线状态判定 | 设备上线发布 status 主题 + LWT 离线兜底；状态写入 PostgreSQL 与 Redis；EMQX 事件 Webhook 双通道作为 M4 加固 | P0 | M2 |
 | FR-DEV-04 | 设备详情与分组 | 设备信息、标签、分组、最近上报时间、最近数据快照 | P1 | M2 |
 | FR-DEV-05 | 启用 / 禁用 / 删除 | 禁用后拒绝接入；删除前校验并清理关联数据 | P1 | M2 |
 | FR-DEV-06 | 设备影子 | desired/reported/version；支持属性期望值设置与同步 | P0 | M2 |
@@ -99,7 +99,7 @@
 |---|---|---|---|:-:|
 | FR-DATA-01 | 属性上报 | 设备按物模型上报属性；非法数据丢弃并记录审计 | P0 | M1 |
 | FR-DATA-02 | 事件上报 | 设备事件上报、按事件类型查询 | P1 | M2 |
-| FR-DATA-03 | 时序存储 | M1 先用 PostgreSQL 简表跑通；M2 起按产品建 TDengine 超级表、设备为子表 | P0 | M2 |
+| FR-DATA-03 | 时序存储 | M1 先用 PostgreSQL 简表跑通；M2 起写入 TDengine（通用超级表 + 每设备子表），M3 按物模型属性优化为列式存储 | P0 | M2 |
 | FR-DATA-04 | 历史查询 | 按设备+属性+时间范围查询；支持 avg/max/min/sum 聚合与降采样 | P0 | M2 |
 | FR-DATA-05 | 最新值快照 | 每设备最新遥测写入 Redis，供看板秒开 | P0 | M2 |
 | FR-DATA-06 | 实时推送 | 浏览器通过 MQTT over WebSocket 订阅实时数据 | P1 | M2 |

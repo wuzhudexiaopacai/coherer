@@ -48,7 +48,7 @@ flowchart TB
     ESP -->|"MQTT QoS1"| EMQX
     EMQX -->|"HTTP 认证 / ACL 回调"| AUTH
     EMQX -->|"规则引擎桥接"| KAFKA
-    EMQX -->|"上下线事件 Webhook"| DEVSVC
+    EMQX -->|"status 主题（共享订阅）"| DEVSVC
 
     KAFKA --> INGEST
     INGEST -->|"批量写入"| TD
@@ -125,7 +125,7 @@ sequenceDiagram
     GW->>DS: 转发请求（JWT 鉴权）
     DS->>DB: 校验产品存在、读取鉴权方式
     DS->>DS: 生成 deviceId + 随机密钥
-    DS->>DB: INSERT device（仅存密钥哈希）
+    DS->>DB: INSERT device（仅存密钥密文）
     DS-->>GW: 返回 deviceId + 明文密钥
     GW-->>U: 密钥仅本次可见，可导出
     Note over U,DS: 密钥丢失只能重置轮换
@@ -158,8 +158,8 @@ sequenceDiagram
     alt 校验通过
         AUTH-->>EMQX: 200 {"result":"allow"}
         EMQX-->>D: CONNACK 成功
-        EMQX->>AUTH: 上线事件 Webhook
-        AUTH->>R: 状态置 online
+        D->>EMQX: PUBLISH {tenant}/{deviceId}/status "online"（下线由 LWT 代发）
+        Note over EMQX,R: 平台网关消费 status 主题<br/>写入 DB + Redis
     else 校验失败
         AUTH-->>EMQX: 200 {"result":"deny"}
         EMQX-->>D: CONNACK Not authorized
@@ -193,6 +193,8 @@ sequenceDiagram
         ING->>K: 非法数据写入死信主题
     end
 ```
+
+> M2 实现说明：后端通过 Paho 共享订阅直接消费 EMQX 遥测（暂无 Kafka）；Kafka 桥接在 M3 引入，上下游链路不变。
 
 ### 3.4 命令下发
 
@@ -516,31 +518,31 @@ erDiagram
 
 ### 5.2 时序模型（TDengine）
 
-每个产品一张超级表（按物模型属性生成列），每台设备一张子表：
+M2 通用模型：超级表 `stb_telemetry` + 每设备子表，`payload` 存物模型参数 JSON（M3 按属性生成列式超级表，优化压缩与查询）：
 
 ```sql
--- 示例：温湿度产品（M2 由物模型自动生成 DDL）
-CREATE STABLE IF NOT EXISTS stb_dev_thermo (
-    ts          TIMESTAMP,
-    temperature FLOAT,
-    humidity    FLOAT
+CREATE STABLE IF NOT EXISTS coherer.stb_telemetry (
+    ts      TIMESTAMP,
+    payload NCHAR(2048)          -- 物模型参数 JSON
 ) TAGS (
-    device_id NCHAR(64),
-    tenant_id NCHAR(32)
+    device_id  NCHAR(64),
+    tenant_id  NCHAR(32),
+    product_id BIGINT
 );
 
--- 每台设备一张子表：首次上报时自动建表并写入
-INSERT INTO d_dev_0001 USING stb_dev_thermo TAGS ('dev-0001', 'default')
-VALUES (NOW, 23.5, 55.0);
+-- 首次写入自动建子表
+INSERT INTO coherer.d_dev_0001 USING coherer.stb_telemetry
+TAGS ('dev-0001', 'default', 1234567890) (ts, payload)
+VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 ```
 
 | 项目 | 规则 |
 |---|---|
-| 超级表命名 | `stb_dev_{productKey}`（productKey 规范化：小写字母/数字/下划线） |
-| 子表命名 | `d_{deviceId}` |
-| 标签 | `device_id`、`tenant_id` |
+| 超级表 | `stb_telemetry`（M3 演进为按产品属性的列式超级表） |
+| 子表命名 | `d_{deviceId}`（非标识符字符替换为下划线） |
+| 标签 | `device_id`、`tenant_id`、`product_id` |
 | 数据保留 | 原始数据 90 天（可配置），聚合结果长期 |
-| 写入方式 | 消费端批量 INSERT，单批 500 条或 500ms 触发 |
+| 写入方式 | 物模型校验通过后写入；M3 改为消费端批量写入 |
 
 ### 5.3 Redis 键设计
 
@@ -563,7 +565,7 @@ VALUES (NOW, 23.5, 55.0);
 | 认证 | `POST /api/auth/refresh` | 刷新令牌 |
 | 产品 | `GET/POST /api/products` | 产品列表 / 创建 |
 | 产品 | `GET/PUT/DELETE /api/products/{id}` | 产品详情 / 修改 / 删除 |
-| 物模型 | `PUT /api/products/{id}/thing-model` | 保存物模型定义 |
+| 物模型 | `GET/PUT /api/products/{id}/thing-model` | 查询 / 保存物模型定义 |
 | 设备 | `GET/POST /api/devices` | 设备列表（分页/筛选）/ 注册（支持批量） |
 | 设备 | `GET/PUT/DELETE /api/devices/{id}` | 详情 / 修改 / 删除 |
 | 设备 | `POST /api/devices/{id}/enable` | 启用 |
@@ -733,7 +735,7 @@ flowchart TB
 | 认证方式 | HMAC-SHA256 签名 + HTTP 认证回调 | 对齐阿里云 IoT；密钥不落明文；可缓存 |
 | MQTT 消费模型 | 共享订阅 `$share/coherer/...` | 消费者水平扩展、无重复消费（同组内） |
 | 削峰 | Kafka 桥接遥测流 | 入库解耦、可重放、多消费组复用 |
-| 时序模型 | TDengine 超级表=产品、子表=设备 | 与物模型天然映射；高压缩与聚合性能 |
+| 时序模型 | M2：通用超级表 + 每设备子表（payload JSON）；M3：按物模型属性生成列式超级表 | 先打通链路，再按物模型优化压缩与查询性能 |
 | 设备影子 | desired/reported/version 乐观锁 | 解决离线设备命令问题；面试常考 |
 | 命令可靠性 | QoS1 + messageId 幂等 + reply + 超时重试；MQTT 5 优先 Response Topic / Correlation Data，3.1.1 回退 replyTopic 字段 | 兼顾语义与成本，不做 QoS2；新旧协议双兼容 |
 | 前端实时数据 | 浏览器 mqtt.js 直连 EMQX WS | 实时性最好，避免后端转发瓶颈 |

@@ -1,7 +1,12 @@
 """Coherer 设备模拟器
 
-模拟一批虚拟设备接入 EMQX 并周期上报遥测数据。
-主题规划与平台一致: {tenantId}/{deviceId}/thing/property/report (QoS1)
+模拟一批虚拟设备接入 EMQX，上报遥测、同步设备影子，并维护在线状态。
+
+主题协议:
+    遥测上报    {tenant}/{deviceId}/thing/property/report (QoS1)
+    影子下行    {tenant}/{deviceId}/shadow/update  (retained)
+    影子上报    {tenant}/{deviceId}/shadow/report  (QoS1)
+    在线状态    {tenant}/{deviceId}/status        (online / LWT offline)
 
 认证方式（EMQX 开启 HTTP 认证后必须使用凭证）:
     username = 毫秒时间戳
@@ -13,7 +18,7 @@
     python simulator.py --count 100 --interval 3   # 匿名模拟 100 台设备
     python simulator.py --tls                      # TLS 8883（校验本地自签 CA）
 
-凭证文件格式（由设备注册接口返回结果整理）:
+凭证文件格式（由设备注册接口 / register_devices.py 生成）:
     [{"deviceId": "dev_xxx", "secret": "..."}]
 """
 
@@ -38,7 +43,7 @@ DEFAULT_CA_FILE = os.path.normpath(
 
 
 class VirtualDevice(threading.Thread):
-    """一台虚拟设备：独立 MQTT 连接 + 周期上报温度/湿度（随机游走）。"""
+    """一台虚拟设备：独立 MQTT 连接 + 遥测上报 + 影子同步 + 在线状态。"""
 
     def __init__(self, host, port, tenant, device_id, interval,
                  tls=False, ca_file=None, insecure=False, device_secret=None):
@@ -49,6 +54,9 @@ class VirtualDevice(threading.Thread):
         self.device_secret = device_secret
         self.interval = interval
         self.topic = f"{tenant}/{device_id}/thing/property/report"
+        self.shadow_topic = f"{tenant}/{device_id}/shadow/update"
+        self.shadow_report_topic = f"{tenant}/{device_id}/shadow/report"
+        self.status_topic = f"{tenant}/{device_id}/status"
         self.temperature = random.uniform(18, 30)
         self.humidity = random.uniform(40, 65)
 
@@ -60,6 +68,9 @@ class VirtualDevice(threading.Thread):
         )
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
+        self.client.on_message = self._on_message
+        # 异常断连（掉电/网络断）由 Broker 代发离线消息
+        self.client.will_set(self.status_topic, "offline", qos=1, retain=False)
 
         if device_secret:
             self._refresh_auth()
@@ -94,18 +105,40 @@ class VirtualDevice(threading.Thread):
             if self.device_secret:
                 self._refresh_auth()
             self._drift()
-            payload = {
-                "id": seq,
-                "ts": int(time.time() * 1000),
-                "params": {
-                    "temperature": round(self.temperature, 2),
-                    "humidity": round(self.humidity, 1),
-                },
-            }
-            self.client.publish(self.topic, json.dumps(payload), qos=1)
+            self._publish_telemetry(seq)
             STOP.wait(self.interval)
+
+        # 优雅退出：主动上报离线
+        try:
+            self.client.publish(self.status_topic, "offline", qos=1)
+            time.sleep(0.2)
+        except Exception:
+            pass
         self.client.disconnect()
         self.client.loop_stop()
+
+    def _publish_telemetry(self, seq: int) -> None:
+        payload = {
+            "id": seq,
+            "ts": int(time.time() * 1000),
+            "params": {
+                "temperature": round(self.temperature, 2),
+                "humidity": round(self.humidity, 1),
+            },
+        }
+        self.client.publish(self.topic, json.dumps(payload), qos=1)
+
+    def _publish_shadow_report(self, version=None) -> None:
+        payload = {
+            "reported": {
+                "reportInterval": self.interval,
+                "temperature": round(self.temperature, 2),
+                "humidity": round(self.humidity, 1),
+            }
+        }
+        if version is not None:
+            payload["version"] = version
+        self.client.publish(self.shadow_report_topic, json.dumps(payload), qos=1)
 
     def _drift(self) -> None:
         self.temperature += random.uniform(-0.4, 0.4)
@@ -115,8 +148,25 @@ class VirtualDevice(threading.Thread):
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:
             print(f"[{self.device_id}] 连接失败: {reason_code}")
-        else:
-            print(f"[{self.device_id}] 已连接, 上报主题: {self.topic}")
+            return
+        print(f"[{self.device_id}] 已连接, 上报主题: {self.topic}")
+        client.publish(self.status_topic, "online", qos=1)
+        client.subscribe(self.shadow_topic, qos=1)
+        # 上线即上报一次当前状态
+        self._publish_shadow_report()
+
+    def _on_message(self, client, userdata, message):
+        if message.topic != self.shadow_topic:
+            return
+        try:
+            data = json.loads(message.payload.decode())
+            desired = data.get("desired") or {}
+            if isinstance(desired.get("reportInterval"), (int, float)):
+                self.interval = max(1.0, min(60.0, float(desired["reportInterval"])))
+                print(f"[{self.device_id}] 应用期望配置 reportInterval={self.interval}s")
+            self._publish_shadow_report(data.get("version"))
+        except Exception as e:
+            print(f"[{self.device_id}] 影子消息处理失败: {e}")
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         if not STOP.is_set():

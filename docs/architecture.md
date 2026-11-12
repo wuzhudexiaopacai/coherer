@@ -62,13 +62,15 @@
 {tenantId}/{deviceId}/thing/service/{id}        # 服务调用下发（QoS1）
 {tenantId}/{deviceId}/thing/service/{id}/reply  # 设备回复
 {tenantId}/{deviceId}/shadow/update             # 影子更新（保留消息）
+{tenantId}/{deviceId}/shadow/report             # 影子上报（设备实际状态）
+{tenantId}/{deviceId}/status                    # 在线状态（online / LWT offline）
 {tenantId}/{deviceId}/ota/progress              # 升级进度
 ```
 
 ### 3.2 关键协议细节
 
 1. **QoS 策略**：遥测 QoS1，消费端按 messageId 幂等去重；不滥用 QoS2。
-2. **遗嘱消息（LWT）**：设备异常断连由 Broker 代发下线消息；配合 EMQX 上下线事件 Webhook 更新 Redis 在线状态并推送前端。
+2. **遗嘱消息（LWT）**：设备上线发布 `status` 主题，异常断连由 Broker 代发离线消息；平台消费状态主题写入 PostgreSQL/Redis（EMQX 事件 Webhook 作为 M4 双通道加固）。
 3. **共享订阅**：`$share/group/topic`，消费端多实例水平扩展、负载均衡。
 4. **设备认证**：clientId=deviceId，username=毫秒时间戳（±5 分钟有效），password=小写十六进制 HMAC-SHA256(设备密钥, `clientId|username`)；EMQX HTTP 认证器回调认证服务（结果缓存 Redis），断线重连需重新签名；后端服务账号使用独立口令。对标阿里云 IoT 签名认证。
 5. **ACL**：EMQX HTTP ACL 回调，设备只能收发自己主题子树。
@@ -90,7 +92,7 @@
 | 阶段 | 时间 | 交付 |
 |---|---|---|
 | M1 垂直跑通 | 第 1~4 周 | Docker Compose 起 EMQX/PG/Redis；Spring Boot 单体：设备注册→模拟器上报→数据入库（PG 简表）→简版看板 |
-| M2 领域核心 | 第 5~10 周 | 签名认证 + ACL、物模型、设备影子、LWT+Webhook 在线状态、TDengine、mqtt.js 实时曲线、告警规则 v1、前端后台成形 |
+| M2 领域核心 | 第 5~10 周 | 签名认证 + ACL、物模型、设备影子、LWT + status 主题在线状态、TDengine、mqtt.js 实时曲线、告警规则 v1、前端后台成形 |
 | M3 高并发改造 | 第 11~16 周 | 微服务拆分（Nacos+Gateway）、Kafka 削峰、批量写 TDengine、共享订阅多实例、Sentinel 限流、命令下发 |
 | M4 企业特性 | 第 17~21 周 | OTA、场景联动、TLS/mTLS 加固、审计日志 |
 | M5 生产化 | 第 22~26 周 | K8s+Helm、Prometheus+Grafana、emqtt-bench 压测（10 万连接）+ 压测报告、文档、演示视频、（可选）ESP32 实物 |
@@ -100,7 +102,7 @@
 - 硬指标（须真实压测得出）：单节点 X 万 MQTT 并发连接 / X 万条每秒吞吐 / 端到端延迟 P99，配 Grafana 截图。
 - 面试必问，提前准备：
   - QoS1 重复/乱序消息如何处理（消费端幂等去重）
-  - 设备在线状态如何判定（LWT + Webhook + Redis）
+  - 设备在线状态如何判定（LWT + status 主题 + Redis）
   - 命令下发的可靠性保证（QoS1 + 去重 + reply + 超时重试 + 状态机）
   - 为什么加 Kafka 而不是直接消费（削峰、解耦、多消费组复用）
   - 为什么用时序数据库、TDengine 超级表建模

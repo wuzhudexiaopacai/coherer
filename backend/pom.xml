@@ -80,6 +80,19 @@
             <version>1.2.5</version>
         </dependency>
 
+        <!-- TDengine JDBC（WebSocket 连接，支持参数绑定） -->
+        <dependency>
+            <groupId>com.taosdata.jdbc</groupId>
+            <artifactId>taos-jdbcdriver</artifactId>
+            <version>3.10.0</version>
+        </dependency>
+
+        <!-- 本地缓存：设备与物模型热数据 -->
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

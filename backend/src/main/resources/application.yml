@@ -54,3 +54,7 @@ coherer:
       client-id: coherer-ingest
       username: service
       secret: coherer-ingest-dev-secret
+  tdengine:
+    url: jdbc:TAOS-WS://localhost:6041
+    username: root
+    password: taosdata
