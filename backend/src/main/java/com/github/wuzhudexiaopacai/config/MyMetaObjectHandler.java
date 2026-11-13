@@ -17,6 +17,7 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
 
     @Override
     public void updateFill(MetaObject metaObject) {
-        strictUpdateFill(metaObject, "updatedAt", OffsetDateTime.class, OffsetDateTime.now());
+        // strictUpdateFill 仅在字段为空时填充；这里强制刷新 updatedAt
+        setFieldValByName("updatedAt", OffsetDateTime.now(), metaObject);
     }
 }

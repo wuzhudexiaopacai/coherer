@@ -3,6 +3,8 @@ package com.github.wuzhudexiaopacai.telemetry;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -36,21 +38,31 @@ public class TelemetryTdStore {
     }
 
     public List<TelemetryVO> recent(String deviceId, int limit) {
-        String sql = "SELECT ts, payload FROM coherer.stb_telemetry WHERE device_id = ? "
+        String sql = "SELECT ts, payload, device_id FROM coherer.stb_telemetry WHERE device_id = ? "
                 + "ORDER BY ts DESC LIMIT " + limit;
-        return jdbc.query(sql, (rs, rowNum) -> {
-            TelemetryVO vo = new TelemetryVO();
-            vo.setTs(OffsetDateTime.ofInstant(
-                    Instant.ofEpochMilli(rs.getTimestamp("ts").getTime()), ZoneOffset.UTC));
-            try {
-                vo.setParams(objectMapper.readValue(
-                        rs.getString("payload"), new TypeReference<Map<String, Object>>() {
-                        }));
-            } catch (Exception e) {
-                vo.setParams(Map.of());
-            }
-            vo.setReceivedAt(OffsetDateTime.now(ZoneOffset.UTC));
-            return vo;
-        }, deviceId);
+        return jdbc.query(sql, (rs, rowNum) -> mapRow(rs), deviceId);
+    }
+
+    /** 全平台最近遥测（看板用）。 */
+    public List<TelemetryVO> recentAll(int limit) {
+        String sql = "SELECT ts, payload, device_id FROM coherer.stb_telemetry "
+                + "ORDER BY ts DESC LIMIT " + limit;
+        return jdbc.query(sql, (rs, rowNum) -> mapRow(rs));
+    }
+
+    private TelemetryVO mapRow(ResultSet rs) throws SQLException {
+        TelemetryVO vo = new TelemetryVO();
+        vo.setDeviceId(rs.getString("device_id"));
+        vo.setTs(OffsetDateTime.ofInstant(
+                Instant.ofEpochMilli(rs.getTimestamp("ts").getTime()), ZoneOffset.UTC));
+        try {
+            vo.setParams(objectMapper.readValue(
+                    rs.getString("payload"), new TypeReference<Map<String, Object>>() {
+                    }));
+        } catch (Exception e) {
+            vo.setParams(Map.of());
+        }
+        vo.setReceivedAt(OffsetDateTime.now(ZoneOffset.UTC));
+        return vo;
     }
 }

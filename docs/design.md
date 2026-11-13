@@ -575,6 +575,7 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 命令 | `POST /api/devices/{id}/commands` | 服务调用 |
 | 命令 | `GET /api/devices/{id}/commands` | 命令历史 |
 | 告警 | `GET /api/alarms` | 告警列表（筛选） |
+| 看板 | `GET /api/dashboard/overview` · `/telemetry-trend` · `/recent-telemetry` | 总览 KPI、小时趋势、全平台最近遥测 |
 | 告警 | `POST /api/alarms/{id}/ack` `.../close` | 确认 / 关闭 |
 | 规则 | `GET/POST /api/alarm-rules` | 告警规则管理 |
 | OTA | `POST /api/firmwares` | 上传固件 |
@@ -664,7 +665,7 @@ flowchart LR
 
     BE["Spring Boot<br/>本机 :8081"]
     SIM["Python 模拟器<br/>本机进程"]
-    WEB["Vue 3 dev server<br/>:5173"]
+    WEB["Vue 3 dev server<br/>:5180"]
 
     SIM -->|"MQTT / TLS"| EMQX
     BE -->|"JDBC"| PG

@@ -75,6 +75,12 @@ python simulator.py --credentials creds.json --tls
 # 5. 查看数据
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
 #    EMQX 控制台: http://localhost:18083 (admin / public) 查看连接与流量
+
+# 6. 前端看板（另开终端）
+cd frontend
+npm install
+npm run dev
+# 打开 http://localhost:5180 （Vite 已代理 /api 到 8081）
 ```
 
 > ⚠️ M1 阶段 EMQX 已开启 **HTTP 签名认证**（clientId=deviceId，username=时间戳，password=HMAC-SHA256），匿名设备无法连接；设备 ACL、在线状态与真实时序库在 M2 实现。
@@ -84,7 +90,7 @@ python simulator.py --credentials creds.json --tls
 ```
 coherer/
 ├── backend/     # Spring Boot 后端（M1 单体，M3 拆微服务）
-├── frontend/    # Vue 3 管理后台（M2 开始）
+├── frontend/    # Vue 3 管理后台 + 实时看板（Vite :5180）
 ├── simulator/   # Python 设备模拟器
 ├── deploy/      # Docker Compose / Helm / 本地开发证书
 └── docs/        # 架构与设计文档
@@ -95,7 +101,7 @@ coherer/
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
-| M2 | 物模型、设备影子、LWT 在线状态、TDengine | 🚧 进行中（剩余：前端看板、mqtt.js 实时曲线、告警 v1） |
+| M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板 | 🚧 进行中（已完成核心链路与看板；剩余：mqtt.js 实时推送、告警 v1） |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、批量写入、共享订阅 | ⬜ |
 | M4 | OTA、场景联动、TLS+ACL+签名认证、多租户 | ⬜ |
 | M5 | K8s+Helm、Prometheus+Grafana、10 万连接压测报告 | ⬜ |

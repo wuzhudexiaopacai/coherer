@@ -1,0 +1,372 @@
+/* ============================================================
+   Coherer Design System
+   Apple 风格的留白与材质 + 企业级数据密度
+   ============================================================ */
+
+:root {
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text",
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --bg: #f5f5f7;
+  --surface: rgba(255, 255, 255, 0.78);
+  --surface-solid: #ffffff;
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #8a8a8f;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.12);
+
+  --accent: #0071e3;
+  --accent-soft: rgba(0, 113, 227, 0.1);
+  --success: #2fb457;
+  --warning: #e8860c;
+  --danger: #ff453a;
+  --violet: #7c6cf6;
+  --orange: #f08a3c;
+
+  --radius-xl: 22px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.06);
+  --shadow-lift: 0 2px 4px rgba(16, 24, 40, 0.05), 0 22px 48px rgba(16, 24, 40, 0.12);
+  --sidebar-w: 252px;
+  --transition: 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+
+  /* Element Plus 主题变量覆盖 */
+  --el-color-primary: #0071e3;
+  --el-color-primary-light-3: #4a9bff;
+  --el-color-primary-light-5: #7ab6ff;
+  --el-color-primary-light-7: #b3d6ff;
+  --el-color-primary-light-8: #d0e5ff;
+  --el-color-primary-light-9: #e9f2ff;
+  --el-color-primary-dark-2: #005bb5;
+  --el-color-success: #2fb457;
+  --el-color-warning: #e8860c;
+  --el-color-danger: #ff453a;
+  --el-font-family: var(--font-sans);
+  --el-text-color-primary: #1d1d1f;
+  --el-text-color-regular: #424245;
+  --el-text-color-secondary: #6e6e73;
+  --el-border-color: rgba(0, 0, 0, 0.1);
+  --el-border-color-light: rgba(0, 0, 0, 0.08);
+  --el-border-color-lighter: rgba(0, 0, 0, 0.06);
+  --el-fill-color-blank: #fff;
+  --el-border-radius-base: 10px;
+  --el-box-shadow-light: var(--shadow-card);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(1100px 520px at 88% -8%, rgba(0, 113, 227, 0.09), transparent 62%),
+    radial-gradient(900px 480px at -6% 14%, rgba(124, 108, 246, 0.07), transparent 58%),
+    radial-gradient(800px 420px at 50% 108%, rgba(47, 180, 87, 0.05), transparent 60%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(0, 113, 227, 0.18);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.16);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 通用元素 ---------- */
+
+.card {
+  background: var(--surface);
+  backdrop-filter: blur(20px) saturate(1.25);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-xl);
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.page-title {
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.page-sub {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.chip.accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+
+.muted {
+  color: var(--text-2);
+}
+
+.tiny {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* ---------- Apple 分段控件 ---------- */
+
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 11px;
+}
+
+.segmented button {
+  border: 0;
+  background: transparent;
+  padding: 6px 13px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button.active {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1), 0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* ---------- 空状态 ---------- */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 20px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.empty-state .icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-3);
+  margin-bottom: 4px;
+  font-size: 20px;
+}
+
+/* ---------- Element Plus 微调 ---------- */
+
+.el-button {
+  font-weight: 500;
+  border-radius: 10px;
+  transition: all var(--transition);
+}
+
+.el-button--primary {
+  box-shadow: 0 6px 16px rgba(0, 113, 227, 0.22);
+}
+
+.el-button--primary:hover {
+  box-shadow: 0 8px 22px rgba(0, 113, 227, 0.3);
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-textarea__inner {
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px var(--border) inset !important;
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.el-input__wrapper.is-focus,
+.el-select__wrapper.is-focused {
+  box-shadow: 0 0 0 2px rgba(0, 113, 227, 0.22) inset !important;
+}
+
+.el-dialog {
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+}
+
+.el-dialog__title {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.el-drawer {
+  border-radius: 22px 0 0 22px;
+}
+
+.el-table {
+  --el-table-border-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-row-hover-bg-color: rgba(0, 0, 0, 0.025);
+  font-size: 13.5px;
+  background: transparent;
+}
+
+.el-table tr {
+  background: transparent;
+}
+
+.el-table th.el-table__cell {
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.el-table td.el-table__cell {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.el-table::before,
+.el-table__inner-wrapper::before {
+  display: none;
+}
+
+.el-pagination {
+  --el-pagination-bg-color: transparent;
+  --el-pagination-button-bg-color: transparent;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.el-tabs__item {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.el-tabs__item.is-active {
+  color: var(--text);
+}
+
+.el-tabs__active-bar {
+  background: var(--accent);
+  border-radius: 2px;
+  height: 2px;
+}
+
+.el-tabs__nav-wrap::after {
+  height: 1px;
+  background: var(--border);
+}
+
+.el-tag {
+  border-radius: 999px;
+  border: none;
+}
+
+.el-alert {
+  border-radius: 12px;
+}
+
+.el-message-box {
+  border-radius: var(--radius-lg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
