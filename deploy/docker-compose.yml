@@ -31,6 +31,26 @@ services:
             }
           }
         ]
+      # HTTP ACL：设备仅能操作自身主题，Web 只读订阅遥测，服务账号全放行
+      EMQX_AUTHORIZATION__SOURCES: |
+        [
+          {
+            type = http
+            enable = true
+            method = post
+            url = "http://host.docker.internal:8081/internal/auth/acl"
+            body {
+              clientid = "$${clientid}"
+              username = "$${username}"
+              topic = "$${topic}"
+              action = "$${action}"
+            }
+            headers {
+              "Content-Type" = "application/json"
+            }
+          }
+        ]
+      EMQX_AUTHORIZATION__NO_MATCH: deny
       # TLS 监听器证书（首次启动前先执行 deploy/certs/gen-certs.sh）
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key

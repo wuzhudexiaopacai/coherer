@@ -83,7 +83,7 @@ npm run dev
 # 打开 http://localhost:5180 （Vite 已代理 /api 到 8081）
 ```
 
-> ⚠️ M1 阶段 EMQX 已开启 **HTTP 签名认证**（clientId=deviceId，username=时间戳，password=HMAC-SHA256），匿名设备无法连接；设备 ACL、在线状态与真实时序库在 M2 实现。
+> ⚠️ EMQX 已开启 **HTTP 签名认证 + 主题级 ACL**：设备只能访问自身 tenant/deviceId 主题；浏览器实时订阅使用后端签发的短时凭证；Dashboard 的 WebSocket 测试客户端因不具备设备签名会被拒绝。
 
 ## 目录结构
 
@@ -101,9 +101,9 @@ coherer/
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
-| M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板、告警 v1、mqtt.js 实时推送 | 🚧 已完成核心交付；剩余：设备 ACL 加固 |
+| M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL | ✅ 已完成 |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、批量写入、共享订阅 | ⬜ |
-| M4 | OTA、场景联动、TLS+ACL+签名认证、多租户 | ⬜ |
+| M4 | OTA、场景联动、mTLS 加固、多租户 | ⬜ |
 | M5 | K8s+Helm、Prometheus+Grafana、10 万连接压测报告 | ⬜ |
 
 ## 文档
