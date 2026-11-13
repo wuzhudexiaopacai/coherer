@@ -8,6 +8,7 @@ import type { Device, Shadow, Telemetry } from '../api/types'
 import MultiSeriesChart from '../components/MultiSeriesChart.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
+import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
 import { subscribeRealtime } from '../realtime/mqtt'
 import { fmtDateTime, fmtRelative, fmtTimeSec } from '../utils/format'
@@ -16,6 +17,7 @@ const route = useRoute()
 const router = useRouter()
 const productStore = useProductStore()
 const spaceStore = useSpaceStore()
+const auth = useAuthStore()
 const deviceRouteId = String(route.params.id)
 
 const device = ref<Device | null>(null)
@@ -244,7 +246,7 @@ async function refreshAll() {
       </div>
       <div class="head-actions">
         <el-button :icon="Refresh" @click="refreshAll">刷新</el-button>
-        <el-button type="primary" :icon="Edit" @click="openDesired">设置期望值</el-button>
+        <el-button v-if="auth.canWrite" type="primary" :icon="Edit" @click="openDesired">设置期望值</el-button>
       </div>
     </div>
 

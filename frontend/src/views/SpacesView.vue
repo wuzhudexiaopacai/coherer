@@ -4,9 +4,11 @@ import { Delete, OfficeBuilding, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { SpaceNode } from '../api/types'
+import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
 
 const spaceStore = useSpaceStore()
+const auth = useAuthStore()
 
 const typeLabels: Record<string, string> = {
   PROJECT: '项目',
@@ -100,7 +102,7 @@ onMounted(() => spaceStore.ensureLoaded())
         <h2 class="page-title">空间管理</h2>
         <p class="page-sub">统一空间树：项目 / 区域 / 楼栋 / 楼层 / 房间；设备归属空间</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreate()">新建根空间</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openCreate()">新建根空间</el-button>
     </div>
 
     <section class="card tree-card" v-loading="spaceStore.loading">
@@ -119,7 +121,7 @@ onMounted(() => spaceStore.ensureLoaded())
             <span class="chip type-chip">{{ typeLabels[data.type] ?? data.type }}</span>
             <span v-if="data.code" class="mono node-code">{{ data.code }}</span>
             <span v-if="spaceStore.currentSpaceId === data.id" class="chip accent">当前空间</span>
-            <span class="node-actions">
+            <span v-if="auth.canWrite" class="node-actions">
               <el-button text size="small" :icon="Plus" @click.stop="openCreate(data)">
                 子空间
               </el-button>

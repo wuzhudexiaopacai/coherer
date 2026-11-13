@@ -3,6 +3,7 @@ import type {
   AlarmQuery,
   AlarmRecord,
   AlarmRule,
+  AuthResponse,
   ConditionNode,
   Device,
   DeviceQuery,
@@ -15,10 +16,19 @@ import type {
   SpaceNode,
   Telemetry,
   ThingModel,
-  TrendPoint
+  TrendPoint,
+  UserInfo
 } from './types'
 
 export const api = {
+  login: (body: { username: string; password: string }) =>
+    request<AuthResponse>({ url: '/auth/login', method: 'post', data: body }),
+
+  refresh: (body: { refreshToken: string }) =>
+    request<AuthResponse>({ url: '/auth/refresh', method: 'post', data: body }),
+
+  me: () => request<UserInfo>({ url: '/auth/me', method: 'get' }),
+
   overview: (spaceId?: string | null) =>
     request<Overview>({
       url: '/dashboard/overview',

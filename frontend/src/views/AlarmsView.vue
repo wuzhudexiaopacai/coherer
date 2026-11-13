@@ -5,11 +5,13 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { AlarmRecord, AlarmRule, ThingModel } from '../api/types'
 import { useProductStore } from '../stores/products'
+import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const productStore = useProductStore()
 const spaceStore = useSpaceStore()
+const auth = useAuthStore()
 const view = ref<'records' | 'rules'>('records')
 let timer: number | undefined
 
@@ -311,7 +313,7 @@ onBeforeUnmount(() => {
           <button :class="{ active: view === 'rules' }" @click="view = 'rules'">规则配置</button>
         </div>
         <el-button v-if="view === 'records'" :icon="Refresh" @click="loadRecords">刷新</el-button>
-        <el-button v-else type="primary" :icon="Plus" @click="openCreate">新建规则</el-button>
+        <el-button v-else-if="auth.canWrite" type="primary" :icon="Plus" @click="openCreate">新建规则</el-button>
       </div>
     </div>
 
@@ -382,7 +384,7 @@ onBeforeUnmount(() => {
             <template #default="{ row }">
               <div class="row-actions">
                 <el-button
-                  v-if="row.status === 'TRIGGERED'"
+                  v-if="auth.canWrite && row.status === 'TRIGGERED'"
                   text
                   type="primary"
                   size="small"
@@ -391,7 +393,7 @@ onBeforeUnmount(() => {
                   确认
                 </el-button>
                 <el-button
-                  v-if="row.status === 'TRIGGERED' || row.status === 'ACKNOWLEDGED'"
+                  v-if="auth.canWrite && (row.status === 'TRIGGERED' || row.status === 'ACKNOWLEDGED')"
                   text
                   size="small"
                   @click="closeAlarm(row)"
@@ -399,7 +401,7 @@ onBeforeUnmount(() => {
                   关闭
                 </el-button>
                 <span
-                  v-if="row.status === 'RECOVERED' || row.status === 'CLOSED'"
+                  v-if="!auth.canWrite || row.status === 'RECOVERED' || row.status === 'CLOSED'"
                   class="tiny"
                 >
                   —
@@ -475,9 +477,11 @@ onBeforeUnmount(() => {
           <el-table-column label="启用" width="80">
             <template #default="{ row }">
               <el-switch
+                v-if="auth.canWrite"
                 v-model="row.enabled"
                 @change="(value: string | number | boolean) => toggleRule(row, Boolean(value))"
               />
+              <span v-else class="tiny">{{ row.enabled ? '已启用' : '已停用' }}</span>
             </template>
           </el-table-column>
           <el-table-column label="创建时间" width="170">
@@ -487,7 +491,8 @@ onBeforeUnmount(() => {
           </el-table-column>
           <el-table-column label="操作" width="90" align="right">
             <template #default="{ row }">
-              <el-button text type="danger" @click="removeRule(row)">删除</el-button>
+              <el-button v-if="auth.canWrite" text type="danger" @click="removeRule(row)">删除</el-button>
+              <span v-else class="tiny">—</span>
             </template>
           </el-table-column>
           <template #empty>

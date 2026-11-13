@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import AppLayout from '../layout/AppLayout.vue'
+import { getAccessToken } from '../auth/token'
 
+const LoginView = () => import('../views/LoginView.vue')
 const DashboardView = () => import('../views/DashboardView.vue')
 const DevicesView = () => import('../views/DevicesView.vue')
 const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
@@ -11,6 +13,12 @@ const SpacesView = () => import('../views/SpacesView.vue')
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    {
+      path: '/login',
+      name: 'login',
+      component: LoginView,
+      meta: { public: true }
+    },
     {
       path: '/',
       component: AppLayout,
@@ -54,6 +62,18 @@ const router = createRouter({
       ]
     }
   ]
+})
+
+router.beforeEach((to) => {
+  const token = getAccessToken()
+  if (to.meta.public) {
+    if (token && to.path === '/login') return '/'
+    return true
+  }
+  if (!token) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  return true
 })
 
 export default router

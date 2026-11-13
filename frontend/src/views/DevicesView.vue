@@ -7,12 +7,14 @@ import { api } from '../api'
 import type { Device, RegisterResult } from '../api/types'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
+import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const router = useRouter()
 const productStore = useProductStore()
 const spaceStore = useSpaceStore()
+const auth = useAuthStore()
 
 const filters = reactive({ keyword: '', status: '', productId: null as string | null })
 const statusOptions = [
@@ -128,7 +130,7 @@ watch(
         <h2 class="page-title">设备管理</h2>
         <p class="page-sub">注册设备、查看在线状态，并进入设备详情观测实时数据</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openRegister">注册设备</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openRegister">注册设备</el-button>
     </div>
 
     <section class="card toolbar">

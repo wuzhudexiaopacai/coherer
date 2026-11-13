@@ -84,7 +84,8 @@ python simulator.py --credentials creds.json --tls
 cd frontend
 npm install
 npm run dev
-# 打开 http://localhost:5180 （Vite 已代理 /api 到 8081）
+# 打开 http://localhost:5180 ，使用 admin / Admin@123 登录
+# （初始口令来自 backend/.env 的 COHERER_ADMIN_PASSWORD）
 ```
 
 > ⚠️ EMQX 已开启 **HTTP 签名认证 + 主题级 ACL**：设备只能访问自身 tenant/deviceId 主题；浏览器实时订阅使用后端签发的短时凭证；Dashboard 的 WebSocket 测试客户端因不具备设备签名会被拒绝。

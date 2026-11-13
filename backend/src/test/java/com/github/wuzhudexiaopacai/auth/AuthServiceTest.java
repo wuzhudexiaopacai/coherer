@@ -1,0 +1,100 @@
+package com.github.wuzhudexiaopacai.auth;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.github.wuzhudexiaopacai.auth.dto.LoginRequest;
+import com.github.wuzhudexiaopacai.auth.dto.RefreshRequest;
+import com.github.wuzhudexiaopacai.auth.entity.SysUser;
+import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
+import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
+import com.github.wuzhudexiaopacai.common.BizException;
+import com.github.wuzhudexiaopacai.security.JwtService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+
+class AuthServiceTest {
+
+    private static final String SECRET = "coherer-test-jwt-secret-at-least-32-bytes";
+
+    private SysUserMapper userMapper;
+    private AuthService authService;
+    private SysUser user;
+
+    @BeforeEach
+    void setUp() {
+        userMapper = mock(SysUserMapper.class);
+        BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+        JwtService jwtService = new JwtService(SECRET, 7200, 604800);
+        authService = new AuthService(userMapper, encoder, jwtService);
+
+        user = new SysUser();
+        user.setId(1L);
+        user.setUsername("admin");
+        user.setNickname("管理员");
+        user.setRole("ADMIN");
+        user.setStatus("ACTIVE");
+        user.setPasswordHash(encoder.encode("Admin@123"));
+        when(userMapper.selectOne(any())).thenReturn(user);
+    }
+
+    @Test
+    void login_validCredentials_returnsTokens() {
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("Admin@123");
+
+        AuthResponse response = authService.login(request);
+
+        assertFalse(response.getAccessToken().isBlank());
+        assertFalse(response.getRefreshToken().isBlank());
+        assertEquals("ADMIN", response.getUser().getRole());
+    }
+
+    @Test
+    void login_wrongPassword_throws401() {
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("wrong");
+
+        BizException exception = assertThrows(BizException.class, () -> authService.login(request));
+        assertEquals(401, exception.getCode());
+    }
+
+    @Test
+    void login_disabledUser_throws403() {
+        user.setStatus("DISABLED");
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("Admin@123");
+
+        BizException exception = assertThrows(BizException.class, () -> authService.login(request));
+        assertEquals(403, exception.getCode());
+    }
+
+    @Test
+    void refresh_validToken_returnsNewTokens() {
+        JwtService jwtService = new JwtService(SECRET, 7200, 604800);
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken(jwtService.issueRefresh(user));
+
+        AuthResponse response = authService.refresh(request);
+
+        assertFalse(response.getAccessToken().isBlank());
+        assertEquals("admin", response.getUser().getUsername());
+    }
+
+    @Test
+    void refresh_invalidToken_throws401() {
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken("not-a-token");
+
+        BizException exception = assertThrows(BizException.class, () -> authService.refresh(request));
+        assertEquals(401, exception.getCode());
+    }
+}

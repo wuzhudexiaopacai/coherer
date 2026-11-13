@@ -28,6 +28,7 @@ services:
             }
             headers {
               "Content-Type" = "application/json"
+              "X-Internal-Token" = "${COHERER_INTERNAL_TOKEN}"
             }
           }
         ]
@@ -47,6 +48,7 @@ services:
             }
             headers {
               "Content-Type" = "application/json"
+              "X-Internal-Token" = "${COHERER_INTERNAL_TOKEN}"
             }
           }
         ]

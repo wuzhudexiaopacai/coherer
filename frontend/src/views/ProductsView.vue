@@ -5,9 +5,11 @@ import { ElMessage } from 'element-plus'
 import { api } from '../api'
 import type { Product, ThingModel } from '../api/types'
 import { useProductStore } from '../stores/products'
+import { useAuthStore } from '../stores/auth'
 import { fmtDateTime } from '../utils/format'
 
 const productStore = useProductStore()
+const auth = useAuthStore()
 const products = computed(() => productStore.products)
 
 const createDialog = reactive({
@@ -94,7 +96,7 @@ onMounted(() => productStore.ensureLoaded())
         <h2 class="page-title">产品与物模型</h2>
         <p class="page-sub">定义设备模板与数据契约：属性、事件和服务</p>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreate">新建产品</el-button>
+      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openCreate">新建产品</el-button>
     </div>
 
     <div v-if="productStore.loading && products.length === 0" class="card loading-card">

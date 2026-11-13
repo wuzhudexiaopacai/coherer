@@ -95,6 +95,20 @@ export interface MqttCredential {
   ttlSeconds: number
 }
 
+export interface UserInfo {
+  id: string
+  username: string
+  nickname: string
+  role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
+}
+
+export interface AuthResponse {
+  accessToken: string
+  refreshToken: string
+  expiresInSeconds: number
+  user: UserInfo
+}
+
 export interface AlarmRule {
   id: string
   productId: string

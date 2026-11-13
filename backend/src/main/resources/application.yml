@@ -49,6 +49,14 @@ coherer:
   security:
     # AES-256-GCM 主密钥（Base64，32 字节），必须由环境变量注入
     secret-key: ${COHERER_SECRET_KEY}
+    # JWT 签名密钥（至少 32 字节）与令牌有效期
+    jwt-secret: ${COHERER_JWT_SECRET}
+    jwt-access-ttl-seconds: 7200
+    jwt-refresh-ttl-seconds: 604800
+    # EMQX 回调 /internal/** 的共享令牌
+    internal-token: ${COHERER_INTERNAL_TOKEN}
+    # 首次启动初始化 admin 用户的口令
+    admin-password: ${COHERER_ADMIN_PASSWORD}
   mqtt:
     broker-host: localhost
     broker-port: 1883
