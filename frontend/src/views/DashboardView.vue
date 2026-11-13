@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Box, Cpu, DataLine, Monitor } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
@@ -8,7 +8,10 @@ import StatCard from '../components/StatCard.vue'
 import LineAreaChart from '../components/LineAreaChart.vue'
 import DonutChart from '../components/DonutChart.vue'
 import { subscribeRealtime } from '../realtime/mqtt'
+import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtNumber } from '../utils/format'
+
+const spaceStore = useSpaceStore()
 
 const overview = ref<Overview | null>(null)
 const trend = ref<TrendPoint[]>([])
@@ -45,7 +48,7 @@ const donutData = computed(() => {
 
 async function loadOverview() {
   try {
-    overview.value = await api.overview()
+    overview.value = await api.overview(spaceStore.currentSpaceId)
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -53,7 +56,7 @@ async function loadOverview() {
 
 async function loadTrend() {
   try {
-    trend.value = await api.telemetryTrend(range.value)
+    trend.value = await api.telemetryTrend(range.value, spaceStore.currentSpaceId)
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -61,7 +64,7 @@ async function loadTrend() {
 
 async function loadRecent() {
   try {
-    recent.value = await api.recentTelemetry(8)
+    recent.value = await api.recentTelemetry(8, spaceStore.currentSpaceId)
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -72,7 +75,17 @@ async function setRange(hours: number) {
   await loadTrend()
 }
 
+watch(
+  () => spaceStore.currentSpaceId,
+  () => {
+    void loadOverview()
+    void loadTrend()
+    void loadRecent()
+  }
+)
+
 onMounted(async () => {
+  await spaceStore.ensureLoaded()
   await Promise.all([loadOverview(), loadTrend(), loadRecent()])
   loading.value = false
   unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', (topic, payload) => {

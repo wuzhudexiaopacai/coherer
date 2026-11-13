@@ -10,6 +10,8 @@ public class DeviceVO {
 
     private Long productId;
 
+    private Long spaceId;
+
     private String deviceId;
 
     private String name;

@@ -49,7 +49,9 @@ function render() {
         {
           type: 'line',
           smooth: 0.35,
-          symbol: 'none',
+          symbol: props.points.length <= 2 ? 'circle' : 'none',
+          symbolSize: 6,
+          showSymbol: props.points.length <= 2,
           data: props.points.map((point) => point.value),
           lineStyle: { width: 2.4, color },
           itemStyle: { color },

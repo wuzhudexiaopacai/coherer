@@ -15,6 +15,7 @@ import com.github.wuzhudexiaopacai.product.entity.Product;
 import com.github.wuzhudexiaopacai.product.mapper.ProductMapper;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
+import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     private final ProductMapper productMapper;
     private final SecretCipher secretCipher;
     private final ShadowService shadowService;
+    private final SpaceService spaceService;
 
     @Transactional(rollbackFor = Exception.class)
     public List<DeviceRegisterResult> register(DeviceRegisterRequest request) {
@@ -45,6 +47,12 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         String prefix = StringUtils.hasText(request.getNamePrefix())
                 ? request.getNamePrefix()
                 : product.getProductKey();
+        Long spaceId = request.getSpaceId() == null
+                ? SpaceService.DEFAULT_SPACE_ID
+                : request.getSpaceId();
+        if (!spaceService.exists(spaceId)) {
+            throw new BizException(404, "空间不存在");
+        }
 
         List<Device> devices = new ArrayList<>(count);
         List<DeviceRegisterResult> results = new ArrayList<>(count);
@@ -56,6 +64,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
             Device device = new Device();
             device.setTenantId(product.getTenantId());
             device.setProductId(product.getId());
+            device.setSpaceId(spaceId);
             device.setDeviceId(deviceId);
             device.setName(name);
             device.setSecretCipher(secretCipher.encrypt(secret));
@@ -70,10 +79,15 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     }
 
     public PageResult<DeviceVO> page(long current, long size, Long productId,
-                                     String status, String keyword) {
+                                     String status, String keyword, Long spaceId) {
+        List<Long> spaceIds = spaceId == null ? null : spaceService.descendantIds(spaceId);
+        if (spaceIds != null && spaceIds.isEmpty()) {
+            return new PageResult<>(0, current, size, List.of());
+        }
         Page<Device> page = page(new Page<>(current, size),
                 Wrappers.<Device>lambdaQuery()
                         .eq(productId != null, Device::getProductId, productId)
+                        .in(spaceIds != null, Device::getSpaceId, spaceIds == null ? List.of() : spaceIds)
                         .eq(StringUtils.hasText(status), Device::getStatus, status)
                         .and(StringUtils.hasText(keyword),
                                 w -> w.like(Device::getDeviceId, keyword)

@@ -1,19 +1,32 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Bell, Box, Fold, Monitor, Odometer } from '@element-plus/icons-vue'
+import { Bell, Box, Fold, Monitor, Odometer, OfficeBuilding } from '@element-plus/icons-vue'
 import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
+import { useSpaceStore } from '../stores/spaces'
 
 const route = useRoute()
+const spaceStore = useSpaceStore()
 const menuOpen = ref(false)
 let unsubscribeRealtime: (() => void) | undefined
 
 onMounted(() => {
   // 全局保活订阅：任何页面都保持实时连接，顶栏状态准确
   unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
+  void spaceStore.ensureLoaded()
 })
 
 onBeforeUnmount(() => unsubscribeRealtime?.())
+
+const spaceValue = computed({
+  get: () => spaceStore.currentSpaceId ?? '__all__',
+  set: (value: string) => spaceStore.setCurrent(value === '__all__' ? null : value)
+})
+
+const spaceOptions = computed(() => [
+  { id: '__all__', label: '全部空间', depth: 0 },
+  ...spaceStore.flat.map((item) => ({ id: item.id, label: item.name, depth: item.depth }))
+])
 
 const title = computed(() => (route.meta.title as string) ?? 'Coherer')
 const subtitle = computed(() => (route.meta.subtitle as string) ?? '')
@@ -61,6 +74,10 @@ watch(
           <el-icon><Bell /></el-icon>
           <span>告警中心</span>
         </router-link>
+        <router-link to="/spaces" class="nav-item" active-class="active">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span>空间管理</span>
+        </router-link>
       </nav>
 
       <div class="sidebar-footer">
@@ -88,6 +105,14 @@ watch(
           </nav>
         </div>
         <div class="topbar-right">
+          <el-select v-model="spaceValue" class="space-select" placeholder="全部空间" aria-label="切换空间">
+            <el-option
+              v-for="item in spaceOptions"
+              :key="item.id"
+              :label="'　'.repeat(item.depth) + item.label"
+              :value="item.id"
+            />
+          </el-select>
           <span class="live-pill" :class="{ offline: !mqttConnected }">
             <span class="pulse" />
             {{ mqttConnected ? '实时数据' : '轮询模式' }}
@@ -318,6 +343,17 @@ watch(
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.space-select {
+  width: 176px;
+}
+
+.space-select :deep(.el-select__wrapper) {
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 0 0 1px var(--border) inset;
+  border-radius: 10px;
+  min-height: 34px;
 }
 
 .live-pill {

@@ -12,6 +12,9 @@ public class DeviceRegisterRequest {
     @NotNull(message = "productId 不能为空")
     private Long productId;
 
+    /** 可选：归属空间，不传则落到默认空间 */
+    private Long spaceId;
+
     @Min(value = 1, message = "单次注册至少 1 台")
     @Max(value = 1000, message = "单次注册最多 1000 台")
     private Integer count = 1;

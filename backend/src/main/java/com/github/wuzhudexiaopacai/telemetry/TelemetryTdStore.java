@@ -45,9 +45,24 @@ public class TelemetryTdStore {
 
     /** 全平台最近遥测（看板用）。 */
     public List<TelemetryVO> recentAll(int limit) {
-        String sql = "SELECT ts, payload, device_id FROM coherer.stb_telemetry "
-                + "ORDER BY ts DESC LIMIT " + limit;
-        return jdbc.query(sql, (rs, rowNum) -> mapRow(rs));
+        return recentAll(limit, null);
+    }
+
+    /** 按空间设备集合过滤的最近遥测；deviceIds 为 null 表示不过滤，空集合表示无设备。 */
+    public List<TelemetryVO> recentAll(int limit, List<String> deviceIds) {
+        if (deviceIds != null && deviceIds.isEmpty()) {
+            return List.of();
+        }
+        String in = deviceIds == null
+                ? ""
+                : " WHERE device_id IN ("
+                        + String.join(",", java.util.Collections.nCopies(deviceIds.size(), "?")) + ")";
+        String sql = "SELECT ts, payload, device_id FROM coherer.stb_telemetry"
+                + in + " ORDER BY ts DESC LIMIT " + limit;
+        if (deviceIds == null) {
+            return jdbc.query(sql, (rs, rowNum) -> mapRow(rs));
+        }
+        return jdbc.query(sql, (rs, rowNum) -> mapRow(rs), deviceIds.toArray());
     }
 
     private TelemetryVO mapRow(ResultSet rs) throws SQLException {

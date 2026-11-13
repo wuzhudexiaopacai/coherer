@@ -11,27 +11,47 @@ import type {
   Product,
   RegisterResult,
   Shadow,
+  SpaceNode,
   Telemetry,
   ThingModel,
   TrendPoint
 } from './types'
 
 export const api = {
-  overview: () => request<Overview>({ url: '/dashboard/overview', method: 'get' }),
+  overview: (spaceId?: string | null) =>
+    request<Overview>({
+      url: '/dashboard/overview',
+      method: 'get',
+      params: spaceId ? { spaceId } : {}
+    }),
 
-  telemetryTrend: (hours = 24) =>
+  telemetryTrend: (hours = 24, spaceId?: string | null) =>
     request<TrendPoint[]>({
       url: '/dashboard/telemetry-trend',
       method: 'get',
-      params: { hours }
+      params: spaceId ? { hours, spaceId } : { hours }
     }),
 
-  recentTelemetry: (limit = 10) =>
+  recentTelemetry: (limit = 10, spaceId?: string | null) =>
     request<Telemetry[]>({
       url: '/dashboard/recent-telemetry',
       method: 'get',
-      params: { limit }
+      params: spaceId ? { limit, spaceId } : { limit }
     }),
+
+  spaceTree: () => request<SpaceNode[]>({ url: '/spaces/tree', method: 'get' }),
+
+  createSpace: (body: {
+    parentId?: string
+    name: string
+    code?: string
+    type?: string
+    sort?: number
+    description?: string
+  }) => request<SpaceNode>({ url: '/spaces', method: 'post', data: body }),
+
+  deleteSpace: (id: string) =>
+    request<void>({ url: `/spaces/${id}`, method: 'delete' }),
 
   listProducts: (params: { current?: number; size?: number; keyword?: string } = {}) =>
     request<PageResult<Product>>({
@@ -54,7 +74,12 @@ export const api = {
 
   getDevice: (id: string) => request<Device>({ url: `/devices/${id}`, method: 'get' }),
 
-  registerDevices: (body: { productId: string; count: number; namePrefix?: string }) =>
+  registerDevices: (body: {
+    productId: string
+    count: number
+    namePrefix?: string
+    spaceId?: string
+  }) =>
     request<RegisterResult[]>({ url: '/devices', method: 'post', data: body }),
 
   deviceTelemetry: (deviceId: string, limit = 60) =>

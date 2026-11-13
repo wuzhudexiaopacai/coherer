@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue'
+import { onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
@@ -7,10 +7,12 @@ import { api } from '../api'
 import type { Device, RegisterResult } from '../api/types'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
+import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const router = useRouter()
 const productStore = useProductStore()
+const spaceStore = useSpaceStore()
 
 const filters = reactive({ keyword: '', status: '', productId: null as string | null })
 const statusOptions = [
@@ -37,7 +39,8 @@ async function load() {
       size: state.size,
       keyword: filters.keyword || undefined,
       status: filters.status || undefined,
-      productId: filters.productId ?? undefined
+      productId: filters.productId ?? undefined,
+      spaceId: spaceStore.currentSpaceId ?? undefined
     })
     state.records = page.records
     state.total = page.total
@@ -61,6 +64,7 @@ const registerDialog = reactive({
   visible: false,
   loading: false,
   productId: null as string | null,
+  spaceId: null as string | null,
   count: 2,
   prefix: 'demo',
   results: [] as RegisterResult[]
@@ -68,6 +72,7 @@ const registerDialog = reactive({
 
 function openRegister() {
   registerDialog.productId = productStore.products[0]?.id ?? null
+  registerDialog.spaceId = spaceStore.currentSpaceId ?? '1'
   registerDialog.count = 2
   registerDialog.prefix = 'demo'
   registerDialog.results = []
@@ -84,7 +89,8 @@ async function submitRegister() {
     registerDialog.results = await api.registerDevices({
       productId: registerDialog.productId,
       count: registerDialog.count,
-      namePrefix: registerDialog.prefix || undefined
+      namePrefix: registerDialog.prefix || undefined,
+      spaceId: registerDialog.spaceId || undefined
     })
     ElMessage.success(`已注册 ${registerDialog.results.length} 台设备`)
     await load()
@@ -105,9 +111,14 @@ async function copy(text: string) {
 }
 
 onMounted(async () => {
-  await productStore.ensureLoaded()
+  await Promise.all([productStore.ensureLoaded(), spaceStore.ensureLoaded()])
   await load()
 })
+
+watch(
+  () => spaceStore.currentSpaceId,
+  () => applyFilters()
+)
 </script>
 
 <template>
@@ -176,6 +187,11 @@ onMounted(async () => {
             <span>{{ productStore.nameOf(row.productId) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="所属空间" min-width="130">
+          <template #default="{ row }">
+            <span>{{ spaceStore.nameOf(row.spaceId) }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <StatusBadge :status="row.status" />
@@ -227,6 +243,17 @@ onMounted(async () => {
                 :key="product.id"
                 :label="`${product.name} (${product.productKey})`"
                 :value="product.id"
+              />
+            </el-select>
+          </label>
+          <label class="field">
+            <span class="field-label">所属空间</span>
+            <el-select v-model="registerDialog.spaceId" placeholder="选择空间">
+              <el-option
+                v-for="space in spaceStore.flat"
+                :key="space.id"
+                :label="'　'.repeat(space.depth) + space.name"
+                :value="space.id"
               />
             </el-select>
           </label>

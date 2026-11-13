@@ -22,6 +22,7 @@ export type DeviceStatus = 'INACTIVE' | 'ONLINE' | 'OFFLINE' | 'DISABLED'
 export interface Device {
   id: string
   productId: string
+  spaceId?: string
   deviceId: string
   name: string
   status: DeviceStatus
@@ -81,6 +82,7 @@ export interface DeviceQuery {
   current?: number
   size?: number
   productId?: string | null
+  spaceId?: string | null
   status?: string
   keyword?: string
 }
@@ -128,4 +130,18 @@ export interface AlarmQuery {
   status?: string
   level?: string
   deviceId?: string
+  spaceId?: string | null
+}
+
+export interface SpaceNode {
+  id: string
+  parentId?: string
+  name: string
+  code?: string
+  type: string
+  sort: number
+  description?: string
+  status: string
+  createdAt?: string
+  children: SpaceNode[]
 }

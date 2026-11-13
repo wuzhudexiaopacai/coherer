@@ -389,6 +389,17 @@ erDiagram
         varchar status "状态"
         timestamp created_at
     }
+    SPACE {
+        bigint id PK
+        bigint tenant_id FK
+        bigint parent_id "父空间"
+        varchar name "名称"
+        varchar code "编码"
+        varchar type "PROJECT/AREA/BUILDING/FLOOR/ROOM"
+        int sort "排序"
+        varchar status "状态"
+        smalldatetime deleted "逻辑删除"
+    }
     SYS_USER {
         bigint id PK
         bigint tenant_id FK
@@ -428,6 +439,7 @@ erDiagram
         bigint id PK
         bigint tenant_id FK
         bigint product_id FK
+        bigint space_id FK "归属空间"
         varchar device_id UK "设备唯一ID"
         varchar name "设备名"
         varchar secret_cipher "AES-GCM 密文"
@@ -572,7 +584,9 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 产品 | `GET/POST /api/products` | 产品列表 / 创建 |
 | 产品 | `GET/PUT/DELETE /api/products/{id}` | 产品详情 / 修改 / 删除 |
 | 物模型 | `GET/PUT /api/products/{id}/thing-model` | 查询 / 保存物模型定义 |
-| 设备 | `GET/POST /api/devices` | 设备列表（分页/筛选）/ 注册（支持批量） |
+| 空间 | `GET /api/spaces/tree` | 空间树（项目/区域/楼栋/楼层/房间） |
+| 空间 | `POST /api/spaces` · `PUT/DELETE /api/spaces/{id}` | 创建 / 修改 / 删除空间 |
+| 设备 | `GET/POST /api/devices` | 设备列表（分页/筛选/空间）/ 注册（支持批量） |
 | 设备 | `GET/PUT/DELETE /api/devices/{id}` | 详情 / 修改 / 删除 |
 | 设备 | `POST /api/devices/{id}/enable` | 启用 |
 | 设备 | `POST /api/devices/{id}/disable` | 禁用 |

@@ -35,9 +35,10 @@ public class DeviceController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) Long spaceId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(deviceService.page(current, size, productId, status, keyword));
+        return ApiResponse.ok(deviceService.page(current, size, productId, status, keyword, spaceId));
     }
 
     @GetMapping("/{id}")

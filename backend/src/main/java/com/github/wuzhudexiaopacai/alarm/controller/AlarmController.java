@@ -25,8 +25,9 @@ public class AlarmController {
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String level,
-            @RequestParam(required = false) String deviceId) {
-        return ApiResponse.ok(alarmRecordService.page(current, size, status, level, deviceId));
+            @RequestParam(required = false) String deviceId,
+            @RequestParam(required = false) Long spaceId) {
+        return ApiResponse.ok(alarmRecordService.page(current, size, status, level, deviceId, spaceId));
     }
 
     @PostMapping("/{id}/ack")

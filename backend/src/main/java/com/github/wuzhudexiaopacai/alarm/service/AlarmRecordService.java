@@ -13,6 +13,7 @@ import com.github.wuzhudexiaopacai.alarm.vo.AlarmRecordVO;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import com.github.wuzhudexiaopacai.device.entity.Device;
+import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -37,6 +38,7 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     private static final Logger log = LoggerFactory.getLogger(AlarmRecordService.class);
 
     private final AlarmRuleService alarmRuleService;
+    private final SpaceService spaceService;
 
     private final Cache<String, Long> conditionStart = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
@@ -75,12 +77,20 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     }
 
     public PageResult<AlarmRecordVO> page(long current, long size, String status,
-                                          String level, String deviceId) {
+                                          String level, String deviceId, Long spaceId) {
+        List<String> spaceDeviceIds = spaceId == null
+                ? null
+                : spaceService.deviceIdsInSpace(spaceId);
+        if (spaceDeviceIds != null && spaceDeviceIds.isEmpty()) {
+            return new PageResult<>(0, current, size, List.of());
+        }
         Page<AlarmRecord> page = page(new Page<>(current, size),
                 Wrappers.<AlarmRecord>lambdaQuery()
                         .eq(StringUtils.hasText(status), AlarmRecord::getStatus, status)
                         .eq(StringUtils.hasText(level), AlarmRecord::getLevel, level)
                         .eq(StringUtils.hasText(deviceId), AlarmRecord::getDeviceId, deviceId)
+                        .in(spaceDeviceIds != null, AlarmRecord::getDeviceId,
+                                spaceDeviceIds == null ? List.of() : spaceDeviceIds)
                         .orderByDesc(AlarmRecord::getTriggeredAt));
 
         Map<Long, String> ruleNames = alarmRuleService.names(

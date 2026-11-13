@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { AlarmRecord, AlarmRule } from '../api/types'
 import { useProductStore } from '../stores/products'
+import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const productStore = useProductStore()
+const spaceStore = useSpaceStore()
 const view = ref<'records' | 'rules'>('records')
 let timer: number | undefined
 
@@ -42,7 +44,8 @@ async function loadRecords() {
       current: recordState.current,
       size: recordState.size,
       status: recordFilters.status || undefined,
-      level: recordFilters.level || undefined
+      level: recordFilters.level || undefined,
+      spaceId: spaceStore.currentSpaceId ?? undefined
     })
     recordState.records = page.records
     recordState.total = page.total
@@ -213,12 +216,22 @@ const operatorSymbol = (operator: string) =>
 const productName = (productId?: string) => productStore.nameOf(productId ?? '')
 
 onMounted(async () => {
-  await productStore.ensureLoaded()
+  await Promise.all([productStore.ensureLoaded(), spaceStore.ensureLoaded()])
   await Promise.all([loadRecords(), loadRules()])
   timer = window.setInterval(() => {
     if (view.value === 'records') loadRecords()
   }, 10_000)
 })
+
+watch(
+  () => spaceStore.currentSpaceId,
+  () => {
+    recordState.current = 1
+    if (view.value === 'records') {
+      void loadRecords()
+    }
+  }
+)
 
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)

@@ -8,12 +8,14 @@ import type { Device, Shadow, Telemetry } from '../api/types'
 import MultiSeriesChart from '../components/MultiSeriesChart.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
+import { useSpaceStore } from '../stores/spaces'
 import { subscribeRealtime } from '../realtime/mqtt'
 import { fmtDateTime, fmtRelative, fmtTimeSec } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
 const productStore = useProductStore()
+const spaceStore = useSpaceStore()
 const deviceRouteId = String(route.params.id)
 
 const device = ref<Device | null>(null)
@@ -111,7 +113,7 @@ function handleRealtime(payload: string) {
 }
 
 onMounted(async () => {
-  await productStore.ensureLoaded()
+  await Promise.all([productStore.ensureLoaded(), spaceStore.ensureLoaded()])
   await loadDevice()
   if (device.value) {
     await Promise.all([loadTelemetry(), loadShadow()])
@@ -233,6 +235,8 @@ async function refreshAll() {
             </el-button>
             <span class="dot-sep">·</span>
             <span class="tiny">{{ productStore.nameOf(device?.productId) }}</span>
+            <span class="dot-sep">·</span>
+            <span class="tiny">{{ spaceStore.nameOf(device?.spaceId) }}</span>
             <span class="dot-sep">·</span>
             <span class="tiny">最近在线 {{ fmtRelative(device?.lastOnlineAt) }}</span>
           </div>

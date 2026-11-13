@@ -20,6 +20,9 @@ public class Device {
 
     private Long productId;
 
+    /** 设备归属空间 */
+    private Long spaceId;
+
     /** 设备唯一标识（MQTT clientId） */
     private String deviceId;
 

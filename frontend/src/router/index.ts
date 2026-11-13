@@ -6,6 +6,7 @@ const DevicesView = () => import('../views/DevicesView.vue')
 const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
 const ProductsView = () => import('../views/ProductsView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
+const SpacesView = () => import('../views/SpacesView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -43,6 +44,12 @@ const router = createRouter({
           name: 'alarms',
           component: AlarmsView,
           meta: { title: '告警中心', subtitle: '告警记录 · 规则配置 · 确认与关闭' }
+        },
+        {
+          path: 'spaces',
+          name: 'spaces',
+          component: SpacesView,
+          meta: { title: '空间管理', subtitle: '项目 / 区域 / 楼栋 / 楼层统一空间树' }
         }
       ]
     }
