@@ -102,10 +102,21 @@ export interface AlarmRule {
   propertyIdentifier: string
   operator: string
   threshold: number
+  condition?: ConditionNode
+  conditionText?: string
   durationSeconds: number
   level: string
   enabled: boolean
   createdAt: string
+}
+
+export interface ConditionNode {
+  logic?: string
+  items?: ConditionNode[]
+  property?: string
+  operator?: string
+  threshold?: number
+  recoverThreshold?: number
 }
 
 export interface AlarmRecord {

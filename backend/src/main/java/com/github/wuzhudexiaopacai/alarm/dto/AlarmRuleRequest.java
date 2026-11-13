@@ -1,5 +1,6 @@
 package com.github.wuzhudexiaopacai.alarm.dto;
 
+import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -18,16 +19,16 @@ public class AlarmRuleRequest {
     @Size(max = 64, message = "规则名称最长 64 字符")
     private String name;
 
-    @NotBlank(message = "属性标识不能为空")
+    /** 多条件树；与下方 legacy 单条件字段二选一（condition 优先） */
+    private ConditionNode condition;
+
     @Pattern(regexp = "^[a-zA-Z_][a-zA-Z0-9_]{0,63}$",
             message = "属性标识只能包含字母、数字、下划线")
     private String propertyIdentifier;
 
-    @NotBlank(message = "比较符不能为空")
-    @Pattern(regexp = "GT|GE|LT|LE|EQ", message = "operator 只能是 GT/GE/LT/LE/EQ")
+    @Pattern(regexp = "GT|GE|LT|LE|EQ|NE", message = "operator 只能是 GT/GE/LT/LE/EQ/NE")
     private String operator;
 
-    @NotNull(message = "阈值不能为空")
     private Double threshold;
 
     @Min(value = 0, message = "持续时长不能为负")

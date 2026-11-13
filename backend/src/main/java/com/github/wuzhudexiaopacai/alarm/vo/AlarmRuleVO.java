@@ -1,5 +1,6 @@
 package com.github.wuzhudexiaopacai.alarm.vo;
 
+import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import java.time.OffsetDateTime;
 import lombok.Data;
 
@@ -17,6 +18,11 @@ public class AlarmRuleVO {
     private String operator;
 
     private Double threshold;
+
+    private ConditionNode condition;
+
+    /** 条件可读摘要，如 "temperature > 30 AND humidity < 60" */
+    private String conditionText;
 
     private Integer durationSeconds;
 

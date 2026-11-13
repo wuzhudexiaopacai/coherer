@@ -99,7 +99,12 @@ public class TelemetryService {
                     throw new IllegalArgumentException(
                             "属性 " + definition.getIdentifier() + " 需要整数");
                 }
-                yield (long) d;
+                long asLong = (long) d;
+                // 全局 Long -> String 序列化用于雪花 ID，这里显式保留数值类型
+                if (asLong >= Integer.MIN_VALUE && asLong <= Integer.MAX_VALUE) {
+                    yield Integer.valueOf((int) asLong);
+                }
+                yield Long.valueOf(asLong);
             }
             case "FLOAT", "DOUBLE" -> requireNumber(definition, value).doubleValue();
             case "BOOL" -> {

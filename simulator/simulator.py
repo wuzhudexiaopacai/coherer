@@ -59,6 +59,11 @@ class VirtualDevice(threading.Thread):
         self.status_topic = f"{tenant}/{device_id}/status"
         self.temperature = random.uniform(18, 30)
         self.humidity = random.uniform(40, 65)
+        self.battery = random.uniform(70, 100)
+        self.signal = random.uniform(-85, -55)
+        self.voltage = 3.2 + self.battery / 100 * 0.9
+        self.door_open = False
+        self.co2 = random.uniform(450, 700)
 
         # 认证模式下 clientId 必须是设备唯一标识，与平台注册信息一致
         client_id = device_id if device_secret else f"sim-{device_id}"
@@ -93,12 +98,28 @@ class VirtualDevice(threading.Thread):
         self.client.username_pw_set(username, password)
 
     def run(self) -> None:
-        try:
-            self.client.connect(self.host, self.port, keepalive=30)
-        except OSError as e:
-            print(f"[{self.device_id}] 无法连接 {self.host}:{self.port}: {e}")
-            return
         self.client.loop_start()
+        # 认证服务/后端重启期间可能被拒绝，持续重试直到连上或退出
+        while not STOP.is_set() and not self.client.is_connected():
+            if self.device_secret:
+                self._refresh_auth()
+            try:
+                self.client.connect(self.host, self.port, keepalive=30)
+            except OSError as e:
+                if not STOP.is_set():
+                    print(f"[{self.device_id}] 无法连接 {self.host}:{self.port}: {e}")
+            for _ in range(25):
+                if self.client.is_connected():
+                    break
+                STOP.wait(0.2)
+            if not self.client.is_connected() and not STOP.is_set():
+                print(f"[{self.device_id}] 连接未就绪，3 秒后重试")
+                STOP.wait(3)
+
+        if not self.client.is_connected():
+            self.client.loop_stop()
+            return
+
         seq = 0
         while not STOP.is_set():
             seq += 1
@@ -124,6 +145,11 @@ class VirtualDevice(threading.Thread):
             "params": {
                 "temperature": round(self.temperature, 2),
                 "humidity": round(self.humidity, 1),
+                "battery": int(round(self.battery)),
+                "signal": int(round(self.signal)),
+                "voltage": round(self.voltage, 2),
+                "doorOpen": self.door_open,
+                "co2": int(round(self.co2)),
             },
         }
         self.client.publish(self.topic, json.dumps(payload), qos=1)
@@ -134,6 +160,8 @@ class VirtualDevice(threading.Thread):
                 "reportInterval": self.interval,
                 "temperature": round(self.temperature, 2),
                 "humidity": round(self.humidity, 1),
+                "battery": int(round(self.battery)),
+                "doorOpen": self.door_open,
             }
         }
         if version is not None:
@@ -144,6 +172,15 @@ class VirtualDevice(threading.Thread):
         self.temperature += random.uniform(-0.4, 0.4)
         self.humidity += random.uniform(-1.0, 1.0)
         self.humidity = min(90.0, max(20.0, self.humidity))
+
+        self.battery = max(5.0, self.battery - random.uniform(0.01, 0.04))
+        self.signal = min(-40.0, max(-100.0, self.signal + random.uniform(-1.5, 1.5)))
+        self.voltage = 3.2 + self.battery / 100 * 0.9
+        if random.random() < 0.02:
+            self.door_open = not self.door_open
+        target_co2 = 1600 if self.door_open else 550
+        self.co2 += (target_co2 - self.co2) * 0.05 + random.uniform(-15, 15)
+        self.co2 = min(2000.0, max(400.0, self.co2))
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         if reason_code.is_failure:

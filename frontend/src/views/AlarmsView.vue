@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
-import type { AlarmRecord, AlarmRule } from '../api/types'
+import type { AlarmRecord, AlarmRule, ThingModel } from '../api/types'
 import { useProductStore } from '../stores/products'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
@@ -107,27 +107,80 @@ async function loadRules() {
   }
 }
 
+interface ConditionForm {
+  property: string
+  operator: string
+  threshold?: number
+  recoverThreshold?: number
+}
+
+const propertyOptions = ref<ThingModel[]>([])
+
 const createDialog = reactive({
   visible: false,
   loading: false,
   productId: null as string | null,
   name: '',
-  propertyIdentifier: 'temperature',
-  operator: 'GT',
-  threshold: 30,
+  logic: 'AND' as 'AND' | 'OR',
+  conditions: [] as ConditionForm[],
   durationSeconds: 0,
   level: 'WARNING'
 })
 
+async function loadPropertyOptions(productId: string | null) {
+  if (!productId) {
+    propertyOptions.value = []
+    return
+  }
+  try {
+    const models = await api.thingModel(productId)
+    // 当前规则构建器面向数值属性；布尔/字符串条件由 API 扩展支持
+    propertyOptions.value = models.filter(
+      (item) =>
+        item.type === 'PROPERTY' &&
+        ['INT', 'FLOAT', 'DOUBLE'].includes(item.dataType ?? '')
+    )
+    for (const condition of createDialog.conditions) {
+      if (!condition.property && propertyOptions.value.length > 0) {
+        const preferred = propertyOptions.value.find(
+          (item) => item.identifier === 'temperature'
+        ) ?? propertyOptions.value[0]
+        condition.property = preferred.identifier
+      }
+    }
+  } catch {
+    propertyOptions.value = []
+  }
+}
+
 function openCreate() {
   createDialog.productId = productStore.products[0]?.id ?? null
   createDialog.name = ''
-  createDialog.propertyIdentifier = 'temperature'
-  createDialog.operator = 'GT'
-  createDialog.threshold = 30
+  createDialog.logic = 'AND'
+  createDialog.conditions = [{ property: '', operator: 'GT', threshold: 30 }]
   createDialog.durationSeconds = 0
   createDialog.level = 'WARNING'
   createDialog.visible = true
+  void loadPropertyOptions(createDialog.productId)
+}
+
+watch(
+  () => createDialog.productId,
+  (value) => loadPropertyOptions(value)
+)
+
+function addCondition() {
+  createDialog.conditions.push({
+    property: propertyOptions.value[0]?.identifier ?? '',
+    operator: 'GT',
+    threshold: 30
+  })
+}
+
+function removeCondition(index: number) {
+  if (createDialog.conditions.length > 1) {
+    createDialog.conditions.splice(index, 1)
+  }
 }
 
 async function submitRule() {
@@ -139,14 +192,24 @@ async function submitRule() {
     ElMessage.warning('请输入规则名称')
     return
   }
+  const items = createDialog.conditions.map((condition) => ({
+    property: condition.property,
+    operator: condition.operator,
+    threshold: condition.threshold,
+    ...(condition.recoverThreshold !== undefined && condition.recoverThreshold !== null
+      ? { recoverThreshold: condition.recoverThreshold }
+      : {})
+  }))
+  if (items.some((item) => !item.property || item.threshold === undefined || item.threshold === null)) {
+    ElMessage.warning('请完整填写每个条件的属性与阈值')
+    return
+  }
   createDialog.loading = true
   try {
     await api.createAlarmRule({
       productId: createDialog.productId,
       name: createDialog.name.trim(),
-      propertyIdentifier: createDialog.propertyIdentifier.trim(),
-      operator: createDialog.operator,
-      threshold: createDialog.threshold,
+      condition: { logic: createDialog.logic, items },
       durationSeconds: createDialog.durationSeconds,
       level: createDialog.level
     })
@@ -209,9 +272,6 @@ const statusMeta = (status: string) => {
       return { label: status, cls: 'closed' }
   }
 }
-
-const operatorSymbol = (operator: string) =>
-  ({ GT: '>', GE: '≥', LT: '<', LE: '≤', EQ: '=' })[operator] ?? operator
 
 const productName = (productId?: string) => productStore.nameOf(productId ?? '')
 
@@ -393,10 +453,10 @@ onBeforeUnmount(() => {
           <el-table-column label="产品" min-width="140">
             <template #default="{ row }">{{ productName(row.productId) }}</template>
           </el-table-column>
-          <el-table-column label="触发条件" min-width="200">
+          <el-table-column label="触发条件" min-width="240">
             <template #default="{ row }">
-              <span class="mono">
-                {{ row.propertyIdentifier }} {{ operatorSymbol(row.operator) }} {{ row.threshold }}
+              <span class="condition-text" :title="row.conditionText">
+                {{ row.conditionText || '—' }}
               </span>
             </template>
           </el-table-column>
@@ -451,7 +511,7 @@ onBeforeUnmount(() => {
       </section>
     </template>
 
-    <el-dialog v-model="createDialog.visible" title="新建告警规则" width="520px">
+    <el-dialog v-model="createDialog.visible" title="新建告警规则" width="680px">
       <div class="form-grid">
         <label class="field">
           <span class="field-label">所属产品</span>
@@ -466,28 +526,86 @@ onBeforeUnmount(() => {
         </label>
         <label class="field">
           <span class="field-label">规则名称</span>
-          <el-input v-model="createDialog.name" placeholder="例如：高温告警" maxlength="64" />
+          <el-input v-model="createDialog.name" placeholder="例如：冷库高温告警" maxlength="64" />
         </label>
-        <div class="form-row">
-          <label class="field">
-            <span class="field-label">属性标识</span>
-            <el-input v-model="createDialog.propertyIdentifier" placeholder="temperature" />
-          </label>
-          <label class="field narrow">
-            <span class="field-label">比较符</span>
-            <el-select v-model="createDialog.operator">
-              <el-option label="> 大于" value="GT" />
-              <el-option label="≥ 大于等于" value="GE" />
-              <el-option label="< 小于" value="LT" />
-              <el-option label="≤ 小于等于" value="LE" />
-              <el-option label="= 等于" value="EQ" />
-            </el-select>
-          </label>
-          <label class="field narrow">
-            <span class="field-label">阈值</span>
-            <el-input-number v-model="createDialog.threshold" :controls="false" />
-          </label>
+
+        <div class="condition-block">
+          <div class="condition-head">
+            <span class="field-label">触发条件</span>
+            <div class="segmented small">
+              <button
+                type="button"
+                :class="{ active: createDialog.logic === 'AND' }"
+                @click="createDialog.logic = 'AND'"
+              >
+                全部满足
+              </button>
+              <button
+                type="button"
+                :class="{ active: createDialog.logic === 'OR' }"
+                @click="createDialog.logic = 'OR'"
+              >
+                任一满足
+              </button>
+            </div>
+          </div>
+          <div class="condition-header">
+            <span>属性</span>
+            <span>比较符</span>
+            <span>触发阈值</span>
+            <span>恢复阈值（可选）</span>
+            <span></span>
+          </div>
+          <div class="condition-list">
+            <div
+              v-for="(condition, index) in createDialog.conditions"
+              :key="index"
+              class="condition-row"
+            >
+              <el-select v-model="condition.property" placeholder="属性" class="property-select">
+                <el-option
+                  v-for="property in propertyOptions"
+                  :key="property.identifier"
+                  :label="`${property.name} (${property.identifier})`"
+                  :value="property.identifier"
+                />
+              </el-select>
+              <el-select v-model="condition.operator" class="operator-select">
+                <el-option label="> 大于" value="GT" />
+                <el-option label="≥ 大于等于" value="GE" />
+                <el-option label="< 小于" value="LT" />
+                <el-option label="≤ 小于等于" value="LE" />
+                <el-option label="= 等于" value="EQ" />
+                <el-option label="≠ 不等于" value="NE" />
+              </el-select>
+              <el-input-number
+                v-model="condition.threshold"
+                :controls="false"
+                class="number-input"
+                placeholder="阈值"
+              />
+              <el-input-number
+                v-model="condition.recoverThreshold"
+                :controls="false"
+                class="number-input"
+                placeholder="恢复阈值"
+              />
+              <el-button
+                text
+                type="danger"
+                :disabled="createDialog.conditions.length === 1"
+                aria-label="删除条件"
+                @click="removeCondition(index)"
+              >
+                ×
+              </el-button>
+            </div>
+          </div>
+          <el-button text :icon="Plus" class="add-condition" @click="addCondition">
+            添加条件
+          </el-button>
         </div>
+
         <div class="form-row">
           <label class="field">
             <span class="field-label">持续时长（秒）</span>
@@ -504,7 +622,8 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <p class="form-hint">
-        规则立即生效：遥测校验通过后按物模型属性值评估；持续 0 秒表示条件成立即触发。
+        多条件支持 AND/OR 组合；恢复阈值用于滞回（告警激活后需越过该值才恢复），留空则与触发阈值一致。
+        持续 0 秒表示条件成立即触发。
       </p>
       <template #footer>
         <el-button @click="createDialog.visible = false">取消</el-button>
@@ -620,6 +739,71 @@ onBeforeUnmount(() => {
 .row-actions :deep(.el-button) {
   margin-left: 0;
   padding: 4px 6px;
+}
+
+.condition-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.condition-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.condition-header {
+  display: grid;
+  grid-template-columns: 1.2fr 0.95fr 0.8fr 0.9fr auto;
+  gap: 8px;
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.condition-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.95fr 0.8fr 0.9fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.property-select,
+.operator-select,
+.number-input {
+  width: 100%;
+}
+
+.segmented.small {
+  padding: 2px;
+}
+
+.segmented.small button {
+  padding: 4px 10px;
+  font-size: 11.5px;
+}
+
+.add-condition {
+  align-self: flex-start;
+  padding-left: 0;
+}
+
+.condition-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-2);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-grid {

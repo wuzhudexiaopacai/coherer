@@ -6,11 +6,13 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
+import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import java.time.OffsetDateTime;
 import lombok.Data;
 
 @Data
-@TableName("alarm_rule")
+@TableName(value = "alarm_rule", autoResultMap = true)
 public class AlarmRule {
 
     @TableId(type = IdType.ASSIGN_ID)
@@ -36,6 +38,10 @@ public class AlarmRule {
     private String level;
 
     private Boolean enabled;
+
+    /** 条件树（多条件 AND/OR + 恢复阈值），求值真相源 */
+    @TableField(typeHandler = JacksonTypeHandler.class)
+    private ConditionNode conditionTree;
 
     @TableField(fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;

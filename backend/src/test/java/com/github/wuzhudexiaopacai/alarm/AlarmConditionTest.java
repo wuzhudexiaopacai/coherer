@@ -34,8 +34,14 @@ class AlarmConditionTest {
     }
 
     @Test
+    void matches_ne_returnsTrueWhenDifferent() {
+        assertTrue(AlarmCondition.matches(1, "NE", 2));
+        assertFalse(AlarmCondition.matches(2, "NE", 2));
+    }
+
+    @Test
     void matches_unknownOperator_returnsFalse() {
-        assertFalse(AlarmCondition.matches(1, "NE", 2));
+        assertFalse(AlarmCondition.matches(1, "XX", 2));
         assertFalse(AlarmCondition.matches(1, null, 2));
     }
 
@@ -46,5 +52,6 @@ class AlarmConditionTest {
         assertEquals("<", AlarmCondition.symbol("LT"));
         assertEquals("≤", AlarmCondition.symbol("LE"));
         assertEquals("=", AlarmCondition.symbol("EQ"));
+        assertEquals("≠", AlarmCondition.symbol("NE"));
     }
 }

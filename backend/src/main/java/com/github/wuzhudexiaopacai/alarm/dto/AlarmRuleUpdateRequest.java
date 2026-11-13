@@ -1,5 +1,6 @@
 package com.github.wuzhudexiaopacai.alarm.dto;
 
+import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
@@ -12,6 +13,9 @@ public class AlarmRuleUpdateRequest {
 
     @Size(max = 64, message = "规则名称最长 64 字符")
     private String name;
+
+    /** 更新条件树（多条件） */
+    private ConditionNode condition;
 
     private Double threshold;
 

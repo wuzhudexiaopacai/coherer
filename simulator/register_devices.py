@@ -1,10 +1,11 @@
 """注册演示设备并生成模拟器凭证文件
 
-自动完成：查找/创建产品 → 批量注册设备 → 输出凭证 JSON（含一次性密钥）。
+自动完成：查找/创建产品 → 应用演示物模型 → 批量注册设备 → 输出凭证 JSON（含一次性密钥）。
 
 用法:
     python register_devices.py --count 5
     python register_devices.py --product-name 我的产品 --count 10 --out creds.json
+    python register_devices.py --model-only        # 只更新演示物模型
 
 后端需要先启动（默认 http://localhost:8081）。生成的凭证文件请勿提交到 git。
 """
@@ -15,6 +16,37 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+# 模拟器上报的属性集合，必须与物模型一致，否则遥测会被校验丢弃
+DEMO_MODEL_ITEMS = [
+    {"type": "PROPERTY", "identifier": "temperature", "name": "温度",
+     "dataType": "FLOAT", "accessMode": "R", "unit": "℃",
+     "spec": {"min": -40, "max": 125}},
+    {"type": "PROPERTY", "identifier": "humidity", "name": "湿度",
+     "dataType": "FLOAT", "accessMode": "R", "unit": "%RH",
+     "spec": {"min": 0, "max": 100}},
+    {"type": "PROPERTY", "identifier": "reportInterval", "name": "上报间隔",
+     "dataType": "INT", "accessMode": "RW", "unit": "s",
+     "spec": {"min": 1, "max": 60}},
+    {"type": "PROPERTY", "identifier": "battery", "name": "电量",
+     "dataType": "INT", "accessMode": "R", "unit": "%",
+     "spec": {"min": 0, "max": 100}},
+    {"type": "PROPERTY", "identifier": "signal", "name": "信号强度",
+     "dataType": "INT", "accessMode": "R", "unit": "dBm",
+     "spec": {"min": -120, "max": 0}},
+    {"type": "PROPERTY", "identifier": "voltage", "name": "电池电压",
+     "dataType": "FLOAT", "accessMode": "R", "unit": "V",
+     "spec": {"min": 3.0, "max": 4.5}},
+    {"type": "PROPERTY", "identifier": "doorOpen", "name": "门磁状态",
+     "dataType": "BOOL", "accessMode": "R"},
+    {"type": "PROPERTY", "identifier": "co2", "name": "二氧化碳",
+     "dataType": "INT", "accessMode": "R", "unit": "ppm",
+     "spec": {"min": 400, "max": 2000}},
+    {"type": "EVENT", "identifier": "highTempAlarm", "name": "高温告警",
+     "spec": {"params": {"temperature": "FLOAT"}}},
+    {"type": "SERVICE", "identifier": "reboot", "name": "重启",
+     "spec": {"input": {"delaySeconds": "INT"}}},
+]
 
 
 def call(base, method, path, body=None):
@@ -39,6 +71,7 @@ def main():
     parser.add_argument("--count", type=int, default=5, help="注册设备数量")
     parser.add_argument("--prefix", default="demo", help="设备名前缀")
     parser.add_argument("--out", default="creds.json", help="凭证输出文件")
+    parser.add_argument("--model-only", action="store_true", help="只更新演示物模型，不注册设备")
     args = parser.parse_args()
 
     base = args.base.rstrip("/")
@@ -55,6 +88,14 @@ def main():
             "category": "DEMO",
         })["data"]
         print(f"创建产品: {product['name']} ({product['productKey']})")
+
+    # 应用演示物模型（属性集合与模拟器上报保持一致）
+    call(base, "PUT", f"/api/products/{product['id']}/thing-model", {"items": DEMO_MODEL_ITEMS})
+    print("物模型已应用：8 个属性 + 1 个事件 + 1 个服务")
+
+    if args.model_only:
+        print("已跳过设备注册（--model-only）")
+        return
 
     # 批量注册设备
     devices = call(base, "POST", "/api/devices", {

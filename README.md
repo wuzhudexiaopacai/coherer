@@ -101,7 +101,7 @@ coherer/
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
-| M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL、空间树 | ✅ 已完成 |
+| M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板、告警 v1（多条件 + 滞回）、mqtt.js 实时推送、设备 ACL、空间树 | ✅ 已完成 |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、批量写入、共享订阅 | ⬜ |
 | M4 | OTA、场景联动、mTLS 加固、多租户 | ⬜ |
 | M5 | K8s+Helm、Prometheus+Grafana、10 万连接压测报告 | ⬜ |

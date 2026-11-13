@@ -86,6 +86,7 @@ class AlarmRecordServiceTest {
     @Test
     void evaluate_conditionRecovered_marksActiveAlarmsRecovered() {
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 100.0, 0)));
+        when(mapper.selectCount(any())).thenReturn(1L);
 
         service.evaluate(device, Map.of("temperature", 35.0));
 

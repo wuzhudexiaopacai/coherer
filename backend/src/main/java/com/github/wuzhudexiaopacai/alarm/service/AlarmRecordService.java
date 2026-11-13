@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.alarm.AlarmCondition;
+import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRecord;
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRule;
 import com.github.wuzhudexiaopacai.alarm.mapper.AlarmRecordMapper;
@@ -49,31 +50,51 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     public void evaluate(Device device, Map<String, Object> params) {
         try {
             for (AlarmRule rule : alarmRuleService.enabledRules(device.getProductId())) {
-                Object raw = params.get(rule.getPropertyIdentifier());
-                if (!(raw instanceof Number number)) {
+                ConditionNode tree = resolveTree(rule);
+                if (tree == null) {
                     continue;
                 }
-                double value = number.doubleValue();
                 String key = rule.getId() + ":" + device.getDeviceId();
+                boolean active = hasActive(rule.getId(), device.getDeviceId());
 
-                if (AlarmCondition.matches(value, rule.getOperator(), rule.getThreshold())) {
+                if (AlarmCondition.evaluate(tree, params, false)) {
                     long now = System.currentTimeMillis();
                     long since = conditionStart.get(key, ignored -> now);
                     int duration = rule.getDurationSeconds() == null ? 0 : rule.getDurationSeconds();
                     if (duration > 0 && now - since < duration * 1000L) {
                         continue;
                     }
-                    if (!hasActive(rule.getId(), device.getDeviceId())) {
-                        trigger(rule, device, value);
+                    if (!active) {
+                        trigger(rule, device, AlarmCondition.firstNumericValue(tree, params), tree);
                     }
                 } else {
                     conditionStart.invalidate(key);
-                    recoverIfActive(rule, device);
+                    // 活动中的告警用恢复阈值（滞回）判断是否真正恢复
+                    if (active && !AlarmCondition.evaluate(tree, params, true)) {
+                        recoverIfActive(rule, device);
+                    }
                 }
             }
         } catch (Exception e) {
             log.warn("告警评估失败 deviceId={} err={}", device.getDeviceId(), e.getMessage());
         }
+    }
+
+    /** 兼容旧规则：condition_tree 为空时由 legacy 单条件字段构造叶子节点。 */
+    private ConditionNode resolveTree(AlarmRule rule) {
+        ConditionNode tree = rule.getConditionTree();
+        if (tree != null && (tree.isGroup() || tree.getProperty() != null)) {
+            return tree;
+        }
+        if (rule.getPropertyIdentifier() == null || rule.getOperator() == null
+                || rule.getThreshold() == null) {
+            return null;
+        }
+        ConditionNode leaf = new ConditionNode();
+        leaf.setProperty(rule.getPropertyIdentifier());
+        leaf.setOperator(rule.getOperator());
+        leaf.setThreshold(rule.getThreshold());
+        return leaf;
     }
 
     public PageResult<AlarmRecordVO> page(long current, long size, String status,
@@ -138,7 +159,7 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         log.info("告警已关闭 id={}", id);
     }
 
-    private void trigger(AlarmRule rule, Device device, double value) {
+    private void trigger(AlarmRule rule, Device device, Double value, ConditionNode tree) {
         AlarmRecord record = new AlarmRecord();
         record.setTenantId(device.getTenantId());
         record.setRuleId(rule.getId());
@@ -148,9 +169,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         record.setStatus("TRIGGERED");
         record.setValue(value);
         record.setTriggeredAt(OffsetDateTime.now());
-        record.setMessage(String.format("%s：%s %s %s（当前 %.2f）",
-                rule.getName(), rule.getPropertyIdentifier(),
-                AlarmCondition.symbol(rule.getOperator()), rule.getThreshold(), value));
+        String current = value == null ? "" : String.format("（当前 %.2f）", value);
+        record.setMessage(rule.getName() + "：" + tree.summary() + current);
         save(record);
         log.info("告警触发 rule={} deviceId={} value={}", rule.getName(), device.getDeviceId(), value);
     }

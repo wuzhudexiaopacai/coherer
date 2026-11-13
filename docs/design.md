@@ -472,8 +472,9 @@ erDiagram
         bigint product_id FK
         varchar name "规则名"
         varchar property_identifier "属性标识"
-        varchar operator "GT/GE/LT/LE/EQ"
+        varchar operator "GT/GE/LT/LE/EQ/NE"
         double threshold "阈值"
+        jsonb condition_tree "条件树 AND/OR + 恢复阈值"
         int duration_seconds "持续秒数"
         varchar level "级别"
         boolean enabled "是否启用"

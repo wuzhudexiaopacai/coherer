@@ -3,6 +3,7 @@ import type {
   AlarmQuery,
   AlarmRecord,
   AlarmRule,
+  ConditionNode,
   Device,
   DeviceQuery,
   MqttCredential,
@@ -115,9 +116,7 @@ export const api = {
   createAlarmRule: (body: {
     productId: string
     name: string
-    propertyIdentifier: string
-    operator: string
-    threshold: number
+    condition: ConditionNode
     durationSeconds: number
     level: string
   }) => request<AlarmRule>({ url: '/alarm-rules', method: 'post', data: body }),
