@@ -84,3 +84,48 @@ export interface DeviceQuery {
   status?: string
   keyword?: string
 }
+
+export interface MqttCredential {
+  url: string
+  clientId: string
+  username: string
+  password: string
+  ttlSeconds: number
+}
+
+export interface AlarmRule {
+  id: string
+  productId: string
+  name: string
+  propertyIdentifier: string
+  operator: string
+  threshold: number
+  durationSeconds: number
+  level: string
+  enabled: boolean
+  createdAt: string
+}
+
+export interface AlarmRecord {
+  id: string
+  ruleId: string
+  ruleName: string
+  productId: string
+  deviceId: string
+  level: string
+  status: string
+  message: string
+  value?: number
+  triggeredAt: string
+  ackedAt?: string
+  recoveredAt?: string
+  closedAt?: string
+}
+
+export interface AlarmQuery {
+  current?: number
+  size?: number
+  status?: string
+  level?: string
+  deviceId?: string
+}

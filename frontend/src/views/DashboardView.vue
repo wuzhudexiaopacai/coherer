@@ -7,6 +7,7 @@ import type { Overview, Telemetry, TrendPoint } from '../api/types'
 import StatCard from '../components/StatCard.vue'
 import LineAreaChart from '../components/LineAreaChart.vue'
 import DonutChart from '../components/DonutChart.vue'
+import { subscribeRealtime } from '../realtime/mqtt'
 import { fmtDateTime, fmtNumber } from '../utils/format'
 
 const overview = ref<Overview | null>(null)
@@ -15,6 +16,7 @@ const recent = ref<Telemetry[]>([])
 const range = ref(24)
 const loading = ref(true)
 let timer: number | undefined
+let unsubscribeRealtime: (() => void) | undefined
 
 const onlineRate = computed(() => {
   if (!overview.value || overview.value.deviceTotal === 0) return '—'
@@ -73,6 +75,26 @@ async function setRange(hours: number) {
 onMounted(async () => {
   await Promise.all([loadOverview(), loadTrend(), loadRecent()])
   loading.value = false
+  unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', (topic, payload) => {
+    try {
+      const data = JSON.parse(payload) as {
+        ts?: number
+        params?: Record<string, number | string | boolean>
+      }
+      if (!data.params) return
+      const levels = topic.split('/')
+      const item: Telemetry = {
+        deviceId: levels[1] ?? '—',
+        ts: new Date(data.ts ?? Date.now()).toISOString(),
+        params: data.params,
+        receivedAt: new Date().toISOString()
+      }
+      if (recent.value.some((row) => row.deviceId === item.deviceId && row.ts === item.ts)) return
+      recent.value = [item, ...recent.value].slice(0, 8)
+    } catch {
+      // 忽略无法解析的消息
+    }
+  })
   timer = window.setInterval(() => {
     loadOverview()
     loadRecent()
@@ -81,6 +103,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)
+  unsubscribeRealtime?.()
 })
 </script>
 

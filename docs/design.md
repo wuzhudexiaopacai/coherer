@@ -459,8 +459,10 @@ erDiagram
         bigint tenant_id FK
         bigint product_id FK
         varchar name "规则名"
-        varchar expression "表达式"
-        int duration_sec "持续秒数"
+        varchar property_identifier "属性标识"
+        varchar operator "GT/GE/LT/LE/EQ"
+        double threshold "阈值"
+        int duration_seconds "持续秒数"
         varchar level "级别"
         boolean enabled "是否启用"
     }
@@ -469,10 +471,13 @@ erDiagram
         bigint rule_id FK
         bigint device_id FK
         varchar level "级别"
-        varchar status "TRIGGERED/ACKED/RECOVERED/CLOSED"
+        varchar status "TRIGGERED/ACKNOWLEDGED/RECOVERED/CLOSED"
+        varchar message "告警内容"
+        double value "触发值"
         timestamp triggered_at
         timestamp acked_at
         timestamp recovered_at
+        timestamp closed_at
     }
     FIRMWARE {
         bigint id PK
@@ -563,6 +568,7 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 |---|---|---|
 | 认证 | `POST /api/auth/login` | 登录，返回 access + refresh token |
 | 认证 | `POST /api/auth/refresh` | 刷新令牌 |
+| 实时 | `GET /api/mqtt/credentials` | 浏览器短时 MQTT 凭证（WebSocket 直连 EMQX） |
 | 产品 | `GET/POST /api/products` | 产品列表 / 创建 |
 | 产品 | `GET/PUT/DELETE /api/products/{id}` | 产品详情 / 修改 / 删除 |
 | 物模型 | `GET/PUT /api/products/{id}/thing-model` | 查询 / 保存物模型定义 |

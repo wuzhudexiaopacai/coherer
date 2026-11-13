@@ -5,6 +5,7 @@ const DashboardView = () => import('../views/DashboardView.vue')
 const DevicesView = () => import('../views/DevicesView.vue')
 const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
 const ProductsView = () => import('../views/ProductsView.vue')
+const AlarmsView = () => import('../views/AlarmsView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -36,6 +37,12 @@ const router = createRouter({
           name: 'products',
           component: ProductsView,
           meta: { title: '产品与物模型', subtitle: '产品定义 · 属性 / 事件 / 服务' }
+        },
+        {
+          path: 'alarms',
+          name: 'alarms',
+          component: AlarmsView,
+          meta: { title: '告警中心', subtitle: '告警记录 · 规则配置 · 确认与关闭' }
         }
       ]
     }

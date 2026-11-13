@@ -54,6 +54,11 @@ coherer:
       client-id: coherer-ingest
       username: service
       secret: coherer-ingest-dev-secret
+    web:
+      # 浏览器实时订阅：后端签发短时凭证，前端经 WebSocket 连接 EMQX
+      secret: coherer-web-dev-secret
+      ws-url: ws://localhost:8083/mqtt
+      credential-ttl-seconds: 300
   tdengine:
     url: jdbc:TAOS-WS://localhost:6041
     username: root

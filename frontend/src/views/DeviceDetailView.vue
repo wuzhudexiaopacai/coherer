@@ -8,6 +8,7 @@ import type { Device, Shadow, Telemetry } from '../api/types'
 import MultiSeriesChart from '../components/MultiSeriesChart.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
+import { subscribeRealtime } from '../realtime/mqtt'
 import { fmtDateTime, fmtRelative, fmtTimeSec } from '../utils/format'
 
 const route = useRoute()
@@ -21,6 +22,7 @@ const shadow = ref<Shadow | null>(null)
 const loading = ref(true)
 const tab = ref('realtime')
 let timer: number | undefined
+let unsubscribeRealtime: (() => void) | undefined
 
 const businessId = computed(() => device.value?.deviceId ?? '')
 
@@ -88,18 +90,44 @@ async function loadShadow() {
   }
 }
 
+function handleRealtime(payload: string) {
+  try {
+    const data = JSON.parse(payload) as {
+      ts?: number
+      params?: Record<string, number | string | boolean>
+    }
+    if (!data.params) return
+    const item: Telemetry = {
+      deviceId: businessId.value,
+      ts: new Date(data.ts ?? Date.now()).toISOString(),
+      params: data.params,
+      receivedAt: new Date().toISOString()
+    }
+    if (telemetry.value.some((row) => row.ts === item.ts)) return
+    telemetry.value = [item, ...telemetry.value].slice(0, 60)
+  } catch {
+    // 忽略无法解析的消息
+  }
+}
+
 onMounted(async () => {
   await productStore.ensureLoaded()
   await loadDevice()
   if (device.value) {
     await Promise.all([loadTelemetry(), loadShadow()])
+    unsubscribeRealtime = subscribeRealtime(
+      `default/${device.value.deviceId}/thing/property/report`,
+      (_topic, payload) => handleRealtime(payload)
+    )
   }
   loading.value = false
-  timer = window.setInterval(loadTelemetry, 5_000)
+  // 实时数据走 MQTT，轮询仅作为兜底（30 秒）
+  timer = window.setInterval(loadTelemetry, 30_000)
 })
 
 onBeforeUnmount(() => {
   if (timer) window.clearInterval(timer)
+  unsubscribeRealtime?.()
 })
 
 const desiredDialog = reactive({
@@ -229,7 +257,7 @@ async function refreshAll() {
             <div class="chart-head">
               <div>
                 <h3>近 15 分钟遥测</h3>
-                <p class="tiny">每 5 秒自动刷新 · 数据来自 TDengine</p>
+                <p class="tiny">MQTT 实时推送 · 数据来自 TDengine</p>
               </div>
               <span class="chip accent">实时</span>
             </div>

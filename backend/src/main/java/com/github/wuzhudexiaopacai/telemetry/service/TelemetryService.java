@@ -3,6 +3,7 @@ package com.github.wuzhudexiaopacai.telemetry.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.wuzhudexiaopacai.alarm.service.AlarmRecordService;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
 import com.github.wuzhudexiaopacai.telemetry.TelemetryTdStore;
@@ -32,6 +33,7 @@ public class TelemetryService {
     private final DeviceLookupService deviceLookupService;
     private final ThingModelService thingModelService;
     private final TelemetryTdStore tdStore;
+    private final AlarmRecordService alarmRecordService;
 
     public void ingest(String tenantId, String deviceId, byte[] payload) {
         try {
@@ -55,6 +57,7 @@ public class TelemetryService {
             Map<String, Object> normalized = validate(properties, params);
             long ts = root.path("ts").asLong(System.currentTimeMillis());
             tdStore.insert(tenantId, deviceId, device.getProductId(), ts, normalized);
+            alarmRecordService.evaluate(device, normalized);
         } catch (IllegalArgumentException e) {
             log.warn("遥测校验失败 deviceId={} err={}", deviceId, e.getMessage());
         } catch (Exception e) {

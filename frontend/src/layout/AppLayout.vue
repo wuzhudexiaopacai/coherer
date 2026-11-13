@@ -1,10 +1,19 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Box, Fold, Monitor, Odometer } from '@element-plus/icons-vue'
+import { Bell, Box, Fold, Monitor, Odometer } from '@element-plus/icons-vue'
+import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
 
 const route = useRoute()
 const menuOpen = ref(false)
+let unsubscribeRealtime: (() => void) | undefined
+
+onMounted(() => {
+  // 全局保活订阅：任何页面都保持实时连接，顶栏状态准确
+  unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
+})
+
+onBeforeUnmount(() => unsubscribeRealtime?.())
 
 const title = computed(() => (route.meta.title as string) ?? 'Coherer')
 const subtitle = computed(() => (route.meta.subtitle as string) ?? '')
@@ -48,6 +57,10 @@ watch(
           <el-icon><Box /></el-icon>
           <span>产品与物模型</span>
         </router-link>
+        <router-link to="/alarms" class="nav-item" active-class="active">
+          <el-icon><Bell /></el-icon>
+          <span>告警中心</span>
+        </router-link>
       </nav>
 
       <div class="sidebar-footer">
@@ -75,7 +88,10 @@ watch(
           </nav>
         </div>
         <div class="topbar-right">
-          <span class="live-pill"><span class="pulse" />实时数据</span>
+          <span class="live-pill" :class="{ offline: !mqttConnected }">
+            <span class="pulse" />
+            {{ mqttConnected ? '实时数据' : '轮询模式' }}
+          </span>
           <div class="avatar" aria-hidden="true">W</div>
         </div>
       </header>
@@ -324,6 +340,17 @@ watch(
   background: var(--success);
   box-shadow: 0 0 0 0 rgba(47, 180, 87, 0.5);
   animation: pulse 2.2s infinite;
+}
+
+.live-pill.offline {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-3);
+}
+
+.live-pill.offline .pulse {
+  background: var(--text-3);
+  box-shadow: none;
+  animation: none;
 }
 
 @keyframes pulse {

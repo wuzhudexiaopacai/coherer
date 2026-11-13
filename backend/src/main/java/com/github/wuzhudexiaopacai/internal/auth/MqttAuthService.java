@@ -45,6 +45,9 @@ public class MqttAuthService {
     @Value("${coherer.mqtt.ingest.secret}")
     private String ingestSecret;
 
+    @Value("${coherer.mqtt.web.secret}")
+    private String webSecret;
+
     public boolean authenticate(String clientId, String username, String password) {
         if (!StringUtils.hasText(clientId)
                 || !StringUtils.hasText(username)
@@ -55,6 +58,25 @@ public class MqttAuthService {
         // 后端服务账号
         if (ingestClientId.equals(clientId) && ingestUsername.equals(username)) {
             return constantTimeEquals(password, ingestSecret);
+        }
+
+        // 浏览器实时订阅账号（后端签发短时凭证）
+        if (username.startsWith("web:")) {
+            if (!clientId.startsWith("web-")) {
+                return false;
+            }
+            long expiry;
+            try {
+                expiry = Long.parseLong(username.substring(4));
+            } catch (NumberFormatException e) {
+                return false;
+            }
+            if (expiry < System.currentTimeMillis()) {
+                log.debug("认证失败 clientId={} 原因=Web 凭证已过期", clientId);
+                return false;
+            }
+            String expected = HmacSigner.signHex(webSecret, clientId + "|" + username);
+            return constantTimeEquals(password.toLowerCase(Locale.ROOT), expected);
         }
 
         // 设备签名认证
