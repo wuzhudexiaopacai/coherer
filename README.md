@@ -113,3 +113,4 @@ coherer/
 | [docs/requirements.md](docs/requirements.md) | 需求规格：角色权限、功能需求（FR 编号）、用户故事与验收标准、非功能指标 |
 | [docs/design.md](docs/design.md) | 设计图：架构图、时序图、状态机、ER 图、Redis 键设计、接口设计、部署图 |
 | [docs/architecture.md](docs/architecture.md) | 技术方案：选型理由、MQTT 协议设计、里程碑、简历卖点与面试预演 |
+| [docs/enterprise-gap-analysis.md](docs/enterprise-gap-analysis.md) | 企业级差距分析：安全/可靠性/测试/运维评分、P0 阻断项、整改路线图与验收清单 |

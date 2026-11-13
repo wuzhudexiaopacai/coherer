@@ -5,7 +5,7 @@
 | 文档版本 | v0.1 |
 | 状态 | 评审中 |
 | 更新日期 | 2026-11-12 |
-| 关联文档 | [architecture.md](architecture.md)（技术方案） · [design.md](design.md)（设计图） |
+| 关联文档 | [architecture.md](architecture.md)（技术方案） · [design.md](design.md)（设计图） · [enterprise-gap-analysis.md](enterprise-gap-analysis.md)（企业级差距） |
 
 ## 1. 项目背景与目标
 
