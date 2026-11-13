@@ -185,3 +185,18 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | 无认证依赖 | `backend/pom.xml`（无 Spring Security） |
 | 无 CI/覆盖率门禁 | 仓库根目录（无 `.github/`、无 JaCoCo/Testcontainers） |
 | 功能缺口 | `docs/requirements.md` 中 FR-AUTH-04/05、FR-DEV-05/07、FR-DATA-02/04/05/07 等 |
+
+## 9. 整改进度
+
+| 阶段 | 状态 | 说明 |
+|---|---|---|
+| A1 密钥外置与环境分层 | ✅ 2026-11-14 | `application.yml` 全部改为环境变量；新增 `backend/.env.example`、`deploy/.env.example`；缺少变量启动即失败；Compose 数据库密码从 `deploy/.env` 注入 |
+| A2 用户认证 + RBAC | ⬜ 待开始 | Spring Security + JWT + 角色权限点 |
+| A3 内部接口与 Web 凭证保护 | ⬜ 待开始 | 共享密钥头 / mTLS；凭证接口绑定登录 |
+| A4 限流与 HTTP 语义 | ⬜ 待开始 | 登录限流、分页上限、404/409 状态码 |
+| A5 传输安全 | ⬜ 待开始 | REST HTTPS、WSS、内部链路 TLS、Dashboard 口令 |
+| B 可观测性 | ⬜ 待开始 | Prometheus、trace-id、审计日志 |
+| C 可靠性/M3 | ⬜ 待开始 | Kafka 分区、幂等、水位、批量写入 |
+| D 测试与 CI | ⬜ 待开始 | Testcontainers、前端测试、覆盖率门禁、Actions |
+| E 功能补齐 | ⬜ 待开始 | 设备启停、事件、区间聚合、通知、规则版本等 |
+| F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |

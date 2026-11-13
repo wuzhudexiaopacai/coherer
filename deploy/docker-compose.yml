@@ -79,7 +79,7 @@ services:
     environment:
       POSTGRES_DB: coherer
       POSTGRES_USER: coherer
-      POSTGRES_PASSWORD: coherer123   # 仅本地开发，生产从 .env / 密钥管理注入
+      POSTGRES_PASSWORD: ${COHERER_DB_PASSWORD:?COHERER_DB_PASSWORD is required, see deploy/.env.example}
     ports:
       - "5432:5432"
     volumes:

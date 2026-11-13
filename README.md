@@ -54,6 +54,10 @@
 前置要求：Docker、JDK 21、Maven、Python 3.10+。
 
 ```bash
+# 首次使用：准备环境变量（.env 已 gitignore，按需修改密码/密钥）
+cp backend/.env.example backend/.env
+cp deploy/.env.example deploy/.env
+
 # 0. 生成本地开发证书（自签 CA + 服务端证书，仅首次执行）
 cd deploy/certs && ./gen-certs.sh && cd ../..
 
