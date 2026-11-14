@@ -41,6 +41,17 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      # 探针分组：liveness 只看进程存活，readiness 看依赖可用
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,redis,diskSpace
+      show-details: when_authorized
   metrics:
     distribution:
       # Grafana P95/P99 面板与延迟告警依赖直方图桶
@@ -51,6 +62,10 @@ management:
   tracing:
     sampling:
       probability: ${COHERER_TRACING_SAMPLE_RATE:1.0}
+  # Zipkin 接收端：trace 上报后可在 Zipkin UI 按 traceId 检索调用链
+  zipkin:
+    tracing:
+      endpoint: ${COHERER_ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
 
 logging:
   # 结构化 JSON 日志（ECS 格式，包含 traceId/spanId）

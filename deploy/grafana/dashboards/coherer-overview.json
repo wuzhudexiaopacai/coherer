@@ -18,6 +18,18 @@
       "tooltip": "查看当前告警",
       "type": "link",
       "url": "http://localhost:9093"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Zipkin 调用链",
+      "tooltip": "按 traceId 检索调用链",
+      "type": "link",
+      "url": "http://localhost:9411"
     }
   ],
   "panels": [
@@ -213,7 +225,8 @@
               }
             ]
           },
-          "unit": "ops"
+          "unit": "ops",
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -289,7 +302,8 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "noValue": "0%"
         },
         "overrides": []
       },
@@ -788,7 +802,8 @@
               }
             ]
           },
-          "unit": "ops"
+          "unit": "ops",
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -880,7 +895,8 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "noValue": "—"
         },
         "overrides": []
       },
@@ -973,7 +989,8 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "noValue": "—"
         },
         "overrides": []
       },

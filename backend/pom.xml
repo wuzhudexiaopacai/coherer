@@ -63,6 +63,12 @@
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-tracing-bridge-brave</artifactId>
         </dependency>
+        <!-- Zipkin 上报：把 trace 交给 Zipkin 查询，而不只是日志里的 traceId -->
+        <dependency>
+            <groupId>io.zipkin.reporter2</groupId>
+            <artifactId>zipkin-reporter-brave</artifactId>
+            <version>3.4.0</version>
+        </dependency>
 
         <!-- 业务库：PostgreSQL + MyBatis-Plus（建表脚本由 Flyway 管理） -->
         <dependency>

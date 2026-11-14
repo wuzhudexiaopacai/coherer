@@ -7,8 +7,34 @@ route:
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
+  routes:
+    # 严重告警单独分组，缩短等待时间
+    - matchers:
+        - severity="critical"
+      receiver: webhook
+      group_wait: 10s
+      repeat_interval: 1h
 
-# 默认接收器不发送通知，仅用于在 Alertmanager UI（:9093）查看告警。
-# 生产环境请补充 webhook_configs / email_configs，或对接钉钉/企微告警转发服务。
+# 抑制规则：上游故障时避免下游告警刷屏
+inhibit_rules:
+  # 后端整体不可达时，MQTT/遥测/5xx/延迟类告警都只是同一次故障的派生现象
+  - source_matchers:
+      - alertname="CohererBackendDown"
+    target_matchers:
+      - service="coherer-backend"
+    equal: ["service"]
+  # MQTT 断连时不再重复报「遥测静默」
+  - source_matchers:
+      - alertname="CohererMqttDisconnected"
+    target_matchers:
+      - alertname=~"CohererTelemetrySilent|CohererTelemetryRejectedHigh"
+    equal: ["service"]
+
+# default 仅用于在 Alertmanager UI（:9093）查看告警；webhook 地址由 entrypoint 注入。
 receivers:
   - name: default
+  - name: webhook
+    webhook_configs:
+      - url: __ALERT_WEBHOOK_URL__
+        send_resolved: true
+        max_alerts: 0

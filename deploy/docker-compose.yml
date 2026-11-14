@@ -178,12 +178,25 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:9093:9093"
+    environment:
+      # 留空则指向本地占位地址，不对外发通知
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/entrypoint.sh:/entrypoint.sh:ro
       - alertmanager-data:/alertmanager
-    command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
-      - "--storage.path=/alertmanager"
+
+  # 链路追踪查询后端：应用把 span 上报到 Zipkin，按 traceId 检索调用链
+  zipkin:
+    image: openzipkin/zipkin:3.4.3
+    container_name: coherer-zipkin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9411:9411"
+    environment:
+      STORAGE_TYPE: mem
+      JAVA_OPTS: "-Xms128m -Xmx256m"
 
   grafana:
     image: grafana/grafana:11.2.0
@@ -204,6 +217,7 @@ services:
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
+      - zipkin
 
 volumes:
   emqx-data:

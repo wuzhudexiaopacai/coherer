@@ -10,3 +10,15 @@ datasources:
     editable: false
     jsonData:
       timeInterval: 15s
+      # 指标面板可直接跳转到 Zipkin 查同 traceId 的调用链
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: coherer-zipkin
+          urlDisplayLabel: "查看调用链"
+
+  - name: Zipkin
+    uid: coherer-zipkin
+    type: zipkin
+    access: proxy
+    url: http://zipkin:9411
+    editable: false
