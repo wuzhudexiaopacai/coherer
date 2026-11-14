@@ -79,6 +79,16 @@ public class DataScopeService {
         return resolveSpaceIds(current(), requestedSpaceId);
     }
 
+    /**
+     * 平台级配置（产品、物模型、告警规则）只允许全平台账号修改。
+     * 空间受限账号即使能读取，也不能改动会影响其他空间的定义。
+     */
+    public void requireUnrestricted(String action) {
+        if (!current().unrestricted()) {
+            throw new BizException(403, action + "属于平台级配置，仅全平台账号可操作");
+        }
+    }
+
     /** 校验目标空间在数据范围内，越界返回 403。 */
     public void requireSpace(DataScope scope, Long spaceId) {
         if (!scope.allows(spaceId)) {

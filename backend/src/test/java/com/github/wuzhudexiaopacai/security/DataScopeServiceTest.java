@@ -14,8 +14,11 @@ import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.util.List;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 class DataScopeServiceTest {
 
@@ -104,6 +107,31 @@ class DataScopeServiceTest {
         when(userMapper.selectOne(any())).thenReturn(null);
 
         assertTrue(service.of("ghost").empty());
+    }
+
+    @Test
+    void requireUnrestricted_rejectsScopedUser() {
+        when(userMapper.selectOne(any())).thenReturn(user(10L, "ACTIVE"));
+        when(spaceService.descendantIds(10L)).thenReturn(List.of(10L));
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.requireUnrestricted("产品管理"));
+        assertEquals(403, exception.getCode());
+    }
+
+    @Test
+    void requireUnrestricted_allowsGlobalUser() {
+        when(userMapper.selectOne(any())).thenReturn(user(null, "ACTIVE"));
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("tester", null, List.of()));
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> service.requireUnrestricted("产品管理"));
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test

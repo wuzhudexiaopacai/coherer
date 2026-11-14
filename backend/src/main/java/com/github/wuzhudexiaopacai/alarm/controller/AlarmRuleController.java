@@ -8,6 +8,7 @@ import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlarmRuleController {
 
     private final AlarmRuleService alarmRuleService;
+    private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
     @GetMapping
@@ -40,6 +42,7 @@ public class AlarmRuleController {
 
     @PostMapping
     public ApiResponse<AlarmRuleVO> create(@Valid @RequestBody AlarmRuleRequest request) {
+        dataScopeService.requireUnrestricted("告警规则管理");
         AlarmRuleVO vo = alarmRuleService.create(request);
         auditLogService.record("ALARM_RULE_CREATE", "alarm-rule", Map.of(
                 "id", String.valueOf(vo.getId()),
@@ -50,6 +53,7 @@ public class AlarmRuleController {
     @PutMapping("/{id}")
     public ApiResponse<AlarmRuleVO> update(@PathVariable Long id,
                                            @Valid @RequestBody AlarmRuleUpdateRequest request) {
+        dataScopeService.requireUnrestricted("告警规则管理");
         AlarmRuleVO vo = alarmRuleService.update(id, request);
         auditLogService.record("ALARM_RULE_UPDATE", "alarm-rule", Map.of(
                 "id", String.valueOf(id),
@@ -59,6 +63,7 @@ public class AlarmRuleController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
+        dataScopeService.requireUnrestricted("告警规则管理");
         alarmRuleService.delete(id);
         auditLogService.record("ALARM_RULE_DELETE", "alarm-rule", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();

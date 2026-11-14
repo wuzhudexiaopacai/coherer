@@ -36,6 +36,15 @@ public class SpaceController {
 
     @PostMapping
     public ApiResponse<SpaceNodeVO> create(@Valid @RequestBody SpaceRequest request) {
+        var scope = dataScopeService.current();
+        if (!scope.unrestricted()) {
+            // 受限账号只能在可见空间下建子空间，不能创建新的根空间
+            if (request.getParentId() == null) {
+                throw new com.github.wuzhudexiaopacai.common.BizException(
+                        403, "空间受限账号需在可见空间下创建子空间");
+            }
+            dataScopeService.requireSpace(scope, request.getParentId());
+        }
         SpaceNodeVO vo = spaceService.create(request);
         auditLogService.record("SPACE_CREATE", "space", Map.of(
                 "id", String.valueOf(vo.getId()),
@@ -46,6 +55,11 @@ public class SpaceController {
     @PutMapping("/{id}")
     public ApiResponse<SpaceNodeVO> update(@PathVariable Long id,
                                            @Valid @RequestBody SpaceUpdateRequest request) {
+        var scope = dataScopeService.current();
+        dataScopeService.requireSpace(scope, id);
+        if (request.getParentId() != null) {
+            dataScopeService.requireSpace(scope, request.getParentId());
+        }
         SpaceNodeVO vo = spaceService.update(id, request);
         auditLogService.record("SPACE_UPDATE", "space", Map.of(
                 "id", String.valueOf(id),
@@ -55,6 +69,7 @@ public class SpaceController {
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
+        dataScopeService.requireSpace(dataScopeService.current(), id);
         spaceService.delete(id);
         auditLogService.record("SPACE_DELETE", "space", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
