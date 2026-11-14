@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -19,6 +20,8 @@ import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,8 +46,9 @@ class AlarmRecordServiceTest {
         mapper = mock(AlarmRecordMapper.class);
         stateService = mock(AlarmStateService.class);
         // 默认：无活动告警、认领成功、条件计时从当前开始
-        when(stateService.isActive(any(), any())).thenReturn(false);
+        when(stateService.activeRuleIds("dev-0001")).thenReturn(Optional.of(Set.of()));
         when(stateService.claimActive(any(), any())).thenReturn(true);
+        when(mapper.selectList(any())).thenReturn(List.of());
         when(stateService.conditionSince(any(), any(), org.mockito.ArgumentMatchers.anyLong()))
                 .thenAnswer(invocation -> invocation.getArgument(2));
         service = new AlarmRecordService(ruleService, mock(SpaceService.class),
@@ -60,7 +64,6 @@ class AlarmRecordServiceTest {
     @Test
     void evaluate_conditionMatched_triggersAlarmRecord() {
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
-        when(mapper.selectCount(any())).thenReturn(0L);
 
         service.evaluate(device, Map.of("temperature", 35.0));
 
@@ -85,7 +88,8 @@ class AlarmRecordServiceTest {
     @Test
     void evaluate_conditionMatchedAndAlreadyActive_doesNotDuplicate() {
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
-        when(mapper.selectCount(any())).thenReturn(1L);
+        when(stateService.activeRuleIds("dev-0001"))
+                .thenReturn(Optional.of(Set.of(1L)));
 
         service.evaluate(device, Map.of("temperature", 35.0));
 
@@ -95,7 +99,8 @@ class AlarmRecordServiceTest {
     @Test
     void evaluate_conditionRecovered_marksActiveAlarmsRecovered() {
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 100.0, 0)));
-        when(stateService.isActive(1L, "dev-0001")).thenReturn(true);
+        when(stateService.activeRuleIds("dev-0001"))
+                .thenReturn(Optional.of(Set.of(1L)));
         when(mapper.update(isNull(), any())).thenReturn(1);
 
         service.evaluate(device, Map.of("temperature", 35.0));
@@ -107,9 +112,10 @@ class AlarmRecordServiceTest {
 
     @Test
     void evaluate_redisAlreadyClaimed_doesNotInsert() {
-        // 另一个实例已认领（Redis 标记存在，但本实例数据库副本还没看到）
+        // 另一个实例已认领（Redis 集合中存在，但本实例数据库副本还没看到）
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
-        when(stateService.isActive(1L, "dev-0001")).thenReturn(true);
+        when(stateService.activeRuleIds("dev-0001"))
+                .thenReturn(Optional.of(Set.of(1L)));
 
         service.evaluate(device, Map.of("temperature", 35.0));
 
@@ -136,6 +142,17 @@ class AlarmRecordServiceTest {
 
         // 落库失败必须归还认领，否则该规则/设备永久无法再次告警
         verify(stateService).releaseActive(1L, "dev-0001");
+    }
+
+    @Test
+    void evaluate_noActiveAlarms_queriesDatabaseOncePer30s() {
+        when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 100.0, 0)));
+
+        service.evaluate(device, Map.of("temperature", 35.0));
+        service.evaluate(device, Map.of("temperature", 35.0));
+
+        // Redis 为空时只批量查一次数据库，不再每条规则/每条消息查一次
+        verify(mapper, times(1)).selectList(any());
     }
 
     private AlarmRule rule(String operator, double threshold, int durationSeconds) {

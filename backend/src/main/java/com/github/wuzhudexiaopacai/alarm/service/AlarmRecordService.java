@@ -3,6 +3,8 @@ package com.github.wuzhudexiaopacai.alarm.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.alarm.AlarmCondition;
 import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRecord;
@@ -15,9 +17,14 @@ import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,16 +50,22 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     private final AlarmStateService alarmStateService;
     private final MeterRegistry meterRegistry;
 
+    /** Redis 集合为空时，从数据库批量恢复的活动规则，30 秒内不重复查库。 */
+    private final Cache<String, Set<Long>> dbActiveCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(30))
+            .maximumSize(50_000)
+            .build();
+
     /** 每条遥测校验入库后调用：评估该产品下所有启用规则。 */
     public void evaluate(Device device, Map<String, Object> params) {
         try {
+            Set<Long> activeRules = resolveActiveRules(device.getDeviceId());
             for (AlarmRule rule : alarmRuleService.enabledRules(device.getProductId())) {
                 ConditionNode tree = resolveTree(rule);
                 if (tree == null) {
                     continue;
                 }
-                boolean active = alarmStateService.isActive(rule.getId(), device.getDeviceId())
-                        || hasActive(rule.getId(), device.getDeviceId());
+                boolean active = activeRules.contains(rule.getId());
 
                 if (AlarmCondition.evaluate(tree, params, false)) {
                     long now = System.currentTimeMillis();
@@ -64,6 +77,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
                     if (!active && alarmStateService.claimActive(rule.getId(), device.getDeviceId())) {
                         try {
                             trigger(rule, device, AlarmCondition.firstNumericValue(tree, params), tree);
+                            activeRules.add(rule.getId());
+                            dbActiveCache.invalidate(device.getDeviceId());
                         } catch (Exception e) {
                             // 落库失败必须归还认领，否则该规则/设备会长时间无法再次告警
                             alarmStateService.releaseActive(rule.getId(), device.getDeviceId());
@@ -75,12 +90,45 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
                     // 活动中的告警用恢复阈值（滞回）判断是否真正恢复
                     if (active && !AlarmCondition.evaluate(tree, params, true)) {
                         recoverIfActive(rule, device);
+                        activeRules.remove(rule.getId());
+                        dbActiveCache.invalidate(device.getDeviceId());
                     }
                 }
             }
         } catch (Exception e) {
             log.warn("告警评估失败 deviceId={} err={}", device.getDeviceId(), e.getMessage());
         }
+    }
+
+    /**
+     * 一次解析设备活动规则：Redis 有值直接用；为空时查一次数据库并回填；
+     * Redis 不可用时回退数据库缓存，避免每条规则一次查询。
+     */
+    private Set<Long> resolveActiveRules(String deviceId) {
+        Optional<Set<Long>> cached = alarmStateService.activeRuleIds(deviceId);
+        if (cached.isPresent()) {
+            Set<Long> redisActive = new HashSet<>(cached.get());
+            if (!redisActive.isEmpty()) {
+                return redisActive;
+            }
+            Set<Long> dbActive = dbActiveCache.get(deviceId, this::loadActiveRuleIds);
+            if (!dbActive.isEmpty()) {
+                alarmStateService.warmUpDevice(deviceId, dbActive);
+                return new HashSet<>(dbActive);
+            }
+            return redisActive;
+        }
+        return new HashSet<>(dbActiveCache.get(deviceId, this::loadActiveRuleIds));
+    }
+
+    private Set<Long> loadActiveRuleIds(String deviceId) {
+        return baseMapper.selectList(Wrappers.<AlarmRecord>lambdaQuery()
+                        .select(AlarmRecord::getRuleId)
+                        .eq(AlarmRecord::getDeviceId, deviceId)
+                        .in(AlarmRecord::getStatus, List.of("TRIGGERED", "ACKNOWLEDGED")))
+                .stream()
+                .map(AlarmRecord::getRuleId)
+                .collect(Collectors.toSet());
     }
 
     /** 兼容旧规则：condition_tree 为空时由 legacy 单条件字段构造叶子节点。 */
@@ -182,14 +230,6 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         save(record);
         meterRegistry.counter("coherer.alarm.triggered", "level", rule.getLevel()).increment();
         log.info("告警触发 rule={} deviceId={} value={}", rule.getName(), device.getDeviceId(), value);
-    }
-
-    private boolean hasActive(Long ruleId, String deviceId) {
-        Long count = baseMapper.selectCount(Wrappers.<AlarmRecord>lambdaQuery()
-                .eq(AlarmRecord::getRuleId, ruleId)
-                .eq(AlarmRecord::getDeviceId, deviceId)
-                .in(AlarmRecord::getStatus, List.of("TRIGGERED", "ACKNOWLEDGED")));
-        return count != null && count > 0;
     }
 
     private void recoverIfActive(AlarmRule rule, Device device) {

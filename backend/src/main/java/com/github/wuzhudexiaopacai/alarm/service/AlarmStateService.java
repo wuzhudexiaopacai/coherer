@@ -1,10 +1,15 @@
 package com.github.wuzhudexiaopacai.alarm.service;
 
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRecord;
-import com.github.wuzhudexiaopacai.alarm.entity.AlarmRule;
-import com.github.wuzhudexiaopacai.device.entity.Device;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,24 +17,22 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 /**
- * 告警运行时状态（Redis）：持续计时 + 活动告警认领。
+ * 告警运行时状态（Redis）：
  *
- * <p>多实例部署时 EMQX 共享订阅不保证同一设备的消息落到同一实例，因此
- * 「条件成立多久」与「是否已有活动告警」必须放在共享存储里：
- * </p>
  * <ul>
  *   <li>{@code coherer:alarm:since:{ruleId}:{deviceId}} → 条件首次成立时间</li>
- *   <li>{@code coherer:alarm:active:{ruleId}:{deviceId}} → 活动告警认领标记</li>
+ *   <li>{@code coherer:alarm:active:dev:{deviceId}} → 该设备活动 ruleId 集合</li>
  * </ul>
  *
- * <p>Redis 不可用时降级为「放行」：由数据库 hasActive 兜底，宁可重复评估也不漏告警。</p>
+ * <p>活动集合按设备聚合，评估一条消息只需一次 SMEMBERS，而不是每条规则一次查询。
+ * Redis 不可用时 {@link #activeRuleIds} 返回 empty Optional，由调用方回退数据库批量查询。</p>
  */
 @Service
 public class AlarmStateService {
 
     private static final Logger log = LoggerFactory.getLogger(AlarmStateService.class);
     private static final String SINCE_PREFIX = "coherer:alarm:since:";
-    private static final String ACTIVE_PREFIX = "coherer:alarm:active:";
+    private static final String DEVICE_ACTIVE_PREFIX = "coherer:alarm:active:dev:";
 
     private final StringRedisTemplate redisTemplate;
     private final long conditionTtlSeconds;
@@ -75,55 +78,74 @@ public class AlarmStateService {
     }
 
     /**
-     * 认领活动告警：只有第一个成功的实例会创建告警记录。
+     * 一次取出设备当前所有活动规则。
      *
-     * @return true 表示本实例获得认领权（仍需与数据库对齐后决定是否插入）
+     * @return empty 表示 Redis 不可用；空集合表示确实没有活动告警
+     */
+    public Optional<Set<Long>> activeRuleIds(String deviceId) {
+        try {
+            Set<String> members = redisTemplate.opsForSet()
+                    .members(DEVICE_ACTIVE_PREFIX + deviceId);
+            if (members == null || members.isEmpty()) {
+                return Optional.of(Set.of());
+            }
+            return Optional.of(members.stream().map(Long::valueOf).collect(Collectors.toSet()));
+        } catch (Exception e) {
+            log.warn("读取设备活动告警失败（回退数据库） deviceId={} err={}",
+                    deviceId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 认领活动告警：SADD 返回 1 的实例获得触发权。
+     * Redis 不可用时放行，由数据库活动告警兜底。
      */
     public boolean claimActive(Long ruleId, String deviceId) {
+        String key = DEVICE_ACTIVE_PREFIX + deviceId;
         try {
-            Boolean created = redisTemplate.opsForValue().setIfAbsent(
-                    ACTIVE_PREFIX + ruleId + ":" + deviceId, "1",
-                    Duration.ofSeconds(activeTtlSeconds));
-            return Boolean.TRUE.equals(created);
+            Long added = redisTemplate.opsForSet().add(key, String.valueOf(ruleId));
+            redisTemplate.expire(key, Duration.ofSeconds(activeTtlSeconds));
+            return added != null && added > 0;
         } catch (Exception e) {
-            log.warn("活动告警认领失败（降级为数据库判断）: {}", e.getMessage());
+            log.warn("活动告警认领失败（降级放行）: {}", e.getMessage());
             return true;
         }
     }
 
-    public boolean isActive(Long ruleId, String deviceId) {
-        try {
-            return Boolean.TRUE.equals(
-                    redisTemplate.hasKey(ACTIVE_PREFIX + ruleId + ":" + deviceId));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /** 告警恢复或关闭时释放认领，允许下次再次触发。 */
+    /** 告警恢复/关闭时释放认领，允许下次再次触发。 */
     public void releaseActive(Long ruleId, String deviceId) {
         try {
-            redisTemplate.delete(ACTIVE_PREFIX + ruleId + ":" + deviceId);
+            redisTemplate.opsForSet()
+                    .remove(DEVICE_ACTIVE_PREFIX + deviceId, String.valueOf(ruleId));
         } catch (Exception e) {
             log.debug("释放活动告警认领失败: {}", e.getMessage());
         }
     }
 
-    /** 预热：启动/重建缓存时按数据库中的活动告警重建认领标记。 */
-    public void warmUp(List<AlarmRecord> activeRecords) {
-        for (AlarmRecord record : activeRecords) {
-            try {
-                redisTemplate.opsForValue().set(
-                        ACTIVE_PREFIX + record.getRuleId() + ":" + record.getDeviceId(), "1",
-                        Duration.ofSeconds(activeTtlSeconds));
-            } catch (Exception e) {
-                log.warn("活动告警预热失败 id={} err={}", record.getId(), e.getMessage());
-                return;
-            }
+    /** 按数据库活动告警回填某设备的 Redis 集合。 */
+    public void warmUpDevice(String deviceId, Collection<Long> ruleIds) {
+        if (ruleIds == null || ruleIds.isEmpty()) {
+            return;
+        }
+        String key = DEVICE_ACTIVE_PREFIX + deviceId;
+        try {
+            String[] members = ruleIds.stream().map(String::valueOf).toArray(String[]::new);
+            redisTemplate.opsForSet().add(key, members);
+            redisTemplate.expire(key, Duration.ofSeconds(activeTtlSeconds));
+        } catch (Exception e) {
+            log.warn("活动告警预热失败 deviceId={} err={}", deviceId, e.getMessage());
         }
     }
 
-    static String activeKey(AlarmRule rule, Device device) {
-        return ACTIVE_PREFIX + rule.getId() + ":" + device.getDeviceId();
+    /** 启动时按数据库活动告警重建 Redis 集合。 */
+    public void warmUp(List<AlarmRecord> activeRecords) {
+        Map<String, Set<Long>> byDevice = new HashMap<>();
+        for (AlarmRecord record : activeRecords) {
+            byDevice.computeIfAbsent(record.getDeviceId(), ignored -> new HashSet<>())
+                    .add(record.getRuleId());
+        }
+        byDevice.forEach(this::warmUpDevice);
+        log.info("告警状态预热完成，设备 {} 台", byDevice.size());
     }
 }

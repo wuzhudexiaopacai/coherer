@@ -13,8 +13,11 @@ import static org.mockito.Mockito.when;
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRecord;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
@@ -22,6 +25,7 @@ class AlarmStateServiceTest {
 
     private StringRedisTemplate redisTemplate;
     private ValueOperations<String, String> valueOperations;
+    private SetOperations<String, String> setOperations;
     private AlarmStateService service;
 
     @BeforeEach
@@ -29,7 +33,9 @@ class AlarmStateServiceTest {
     void setUp() {
         redisTemplate = mock(StringRedisTemplate.class);
         valueOperations = mock(ValueOperations.class);
+        setOperations = mock(SetOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
         service = new AlarmStateService(redisTemplate, 3600, 86400);
     }
 
@@ -49,7 +55,6 @@ class AlarmStateServiceTest {
                 .thenReturn(false);
         when(valueOperations.get("coherer:alarm:since:1:dev-1")).thenReturn("500");
 
-        // 多实例共享同一计时起点
         assertEquals(500L, service.conditionSince(1L, "dev-1", 9000L));
     }
 
@@ -62,46 +67,82 @@ class AlarmStateServiceTest {
     }
 
     @Test
+    void activeRuleIds_returnsDeviceSetInOneCall() {
+        when(setOperations.members("coherer:alarm:active:dev:dev-1"))
+                .thenReturn(Set.of("1", "2"));
+
+        Optional<Set<Long>> result = service.activeRuleIds("dev-1");
+
+        assertTrue(result.isPresent());
+        assertEquals(Set.of(1L, 2L), result.get());
+    }
+
+    @Test
+    void activeRuleIds_emptySetIsPresent() {
+        when(setOperations.members(anyString())).thenReturn(Set.of());
+
+        Optional<Set<Long>> result = service.activeRuleIds("dev-1");
+
+        assertTrue(result.isPresent());
+        assertTrue(result.get().isEmpty());
+    }
+
+    @Test
+    void activeRuleIds_redisDown_isEmptyOptional() {
+        when(setOperations.members(anyString())).thenThrow(new RuntimeException("redis down"));
+
+        assertTrue(service.activeRuleIds("dev-1").isEmpty());
+    }
+
+    @Test
     void claimActive_firstInstanceWins() {
-        when(valueOperations.setIfAbsent(anyString(), eq("1"), any(Duration.class)))
-                .thenReturn(true, false);
+        when(setOperations.add(anyString(), any(String[].class))).thenReturn(1L, 0L);
 
         assertTrue(service.claimActive(1L, "dev-1"));
         assertFalse(service.claimActive(1L, "dev-1"));
+        verify(redisTemplate, org.mockito.Mockito.times(2))
+                .expire("coherer:alarm:active:dev:dev-1", Duration.ofSeconds(86400));
     }
 
     @Test
     void claimActive_redisDown_allowsTrigger() {
-        when(valueOperations.setIfAbsent(anyString(), eq("1"), any(Duration.class)))
+        when(setOperations.add(anyString(), any(String[].class)))
                 .thenThrow(new RuntimeException("redis down"));
 
-        // 降级为放行：由数据库 hasActive 兜底，避免漏告警
         assertTrue(service.claimActive(1L, "dev-1"));
     }
 
     @Test
-    void warmUp_writesClaimForActiveRecords() {
-        AlarmRecord record = new AlarmRecord();
-        record.setRuleId(1L);
-        record.setDeviceId("dev-1");
+    void releaseActive_removesFromDeviceSet() {
+        service.releaseActive(1L, "dev-1");
 
-        service.warmUp(List.of(record));
+        verify(setOperations).remove("coherer:alarm:active:dev:dev-1", "1");
+    }
 
-        verify(valueOperations).set("coherer:alarm:active:1:dev-1", "1",
+    @Test
+    void warmUpDevice_writesSetWithTtl() {
+        service.warmUpDevice("dev-1", List.of(1L, 2L));
+
+        verify(setOperations).add("coherer:alarm:active:dev:dev-1", "1", "2");
+        verify(redisTemplate).expire("coherer:alarm:active:dev:dev-1",
                 Duration.ofSeconds(86400));
     }
 
     @Test
-    void releaseActive_deletesClaimKey() {
-        service.releaseActive(1L, "dev-1");
+    void warmUp_groupsRecordsByDevice() {
+        AlarmRecord first = new AlarmRecord();
+        first.setRuleId(1L);
+        first.setDeviceId("dev-1");
+        AlarmRecord second = new AlarmRecord();
+        second.setRuleId(2L);
+        second.setDeviceId("dev-1");
+        AlarmRecord third = new AlarmRecord();
+        third.setRuleId(3L);
+        third.setDeviceId("dev-2");
 
-        verify(redisTemplate).delete("coherer:alarm:active:1:dev-1");
-    }
+        service.warmUp(List.of(first, second, third));
 
-    @Test
-    void clearCondition_deletesSinceKey() {
-        service.clearCondition(1L, "dev-1");
-
-        verify(redisTemplate).delete("coherer:alarm:since:1:dev-1");
+        verify(setOperations).add("coherer:alarm:active:dev:dev-1", "1", "2");
+        verify(setOperations).add("coherer:alarm:active:dev:dev-2", "3");
     }
 }
