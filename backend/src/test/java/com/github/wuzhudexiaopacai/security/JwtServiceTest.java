@@ -38,13 +38,13 @@ class JwtServiceTest {
 
     @Test
     void issueRefresh_parseRefresh_succeeds() {
-        String token = jwtService.issueRefresh(user);
+        String token = jwtService.issueRefresh(user, "jti-test");
         assertEquals("refresh", jwtService.parseRefresh(token).get("type"));
     }
 
     @Test
     void parseAccess_withRefreshToken_throws() {
-        String refresh = jwtService.issueRefresh(user);
+        String refresh = jwtService.issueRefresh(user, "jti-test");
         assertThrows(IllegalArgumentException.class, () -> jwtService.parseAccess(refresh));
     }
 

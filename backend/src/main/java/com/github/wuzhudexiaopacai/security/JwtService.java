@@ -37,8 +37,8 @@ public class JwtService {
         return issue(user, TYPE_ACCESS, accessTtlSeconds);
     }
 
-    public String issueRefresh(SysUser user) {
-        return issue(user, TYPE_REFRESH, refreshTtlSeconds);
+    public String issueRefresh(SysUser user, String jti) {
+        return issue(user, TYPE_REFRESH, refreshTtlSeconds, jti);
     }
 
     public Claims parseAccess(String token) {
@@ -53,14 +53,26 @@ public class JwtService {
         return accessTtlSeconds;
     }
 
+    public long refreshTtlSeconds() {
+        return refreshTtlSeconds;
+    }
+
     private String issue(SysUser user, String type, long ttlSeconds) {
+        return issue(user, type, ttlSeconds, null);
+    }
+
+    private String issue(SysUser user, String type, long ttlSeconds, String jti) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(user.getUsername())
                 .claim("uid", String.valueOf(user.getId()))
                 .claim("role", user.getRole())
                 .claim("ver", user.getTokenVersion() == null ? 0 : user.getTokenVersion())
-                .claim("type", type)
+                .claim("type", type);
+        if (jti != null) {
+            builder.id(jti);
+        }
+        return builder
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key)

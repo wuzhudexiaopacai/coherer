@@ -15,6 +15,7 @@ import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
+import com.github.wuzhudexiaopacai.security.RefreshTokenStore;
 import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +27,7 @@ class AuthServiceTest {
     private static final String SECRET = "coherer-test-jwt-secret-at-least-32-bytes";
 
     private SysUserMapper userMapper;
+    private RefreshTokenStore refreshTokenStore;
     private AuthService authService;
     private SysUser user;
 
@@ -34,9 +36,13 @@ class AuthServiceTest {
         userMapper = mock(SysUserMapper.class);
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
+        refreshTokenStore = mock(RefreshTokenStore.class);
+        when(refreshTokenStore.issue(any(), org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn("jti-test");
+        when(refreshTokenStore.consume(any(), any())).thenReturn(true);
         authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService(),
                 mock(AuditLogService.class), mock(TokenSessionValidator.class),
-                new SimpleMeterRegistry());
+                refreshTokenStore, new SimpleMeterRegistry());
 
         user = new SysUser();
         user.setId(1L);
@@ -118,7 +124,7 @@ class AuthServiceTest {
     void refresh_validToken_returnsNewTokens() {
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
         RefreshRequest request = new RefreshRequest();
-        request.setRefreshToken(jwtService.issueRefresh(user));
+        request.setRefreshToken(jwtService.issueRefresh(user, "jti-test"));
 
         AuthResponse response = authService.refresh(request);
 
@@ -131,8 +137,19 @@ class AuthServiceTest {
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
         user.setTokenVersion(0);
         RefreshRequest request = new RefreshRequest();
-        request.setRefreshToken(jwtService.issueRefresh(user));
+        request.setRefreshToken(jwtService.issueRefresh(user, "jti-test"));
         user.setTokenVersion(1);
+
+        BizException exception = assertThrows(BizException.class, () -> authService.refresh(request));
+        assertEquals(401, exception.getCode());
+    }
+
+    @Test
+    void refresh_replayedToken_throws401() {
+        JwtService jwtService = new JwtService(SECRET, 7200, 604800);
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken(jwtService.issueRefresh(user, "jti-replay"));
+        when(refreshTokenStore.consume("jti-replay", "admin")).thenReturn(false);
 
         BizException exception = assertThrows(BizException.class, () -> authService.refresh(request));
         assertEquals(401, exception.getCode());

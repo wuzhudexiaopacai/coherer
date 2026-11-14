@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.auth.vo.UserInfoVO;
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
+import com.github.wuzhudexiaopacai.security.RefreshTokenStore;
 import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import io.jsonwebtoken.Claims;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -28,6 +29,7 @@ public class AuthService {
     private final LoginAttemptService loginAttemptService;
     private final AuditLogService auditLogService;
     private final TokenSessionValidator sessionValidator;
+    private final RefreshTokenStore refreshTokenStore;
     private final MeterRegistry meterRegistry;
 
     public AuthResponse login(LoginRequest request, String clientIp) {
@@ -71,6 +73,10 @@ public class AuthService {
         if ((tokenVersion == null ? 0 : tokenVersion) != current) {
             throw new BizException(401, "登录状态已失效，请重新登录");
         }
+        // 一次性消费旧 refresh jti：同一刷新令牌只能用一次，防止重放
+        if (!refreshTokenStore.consume(claims.getId(), user.getUsername())) {
+            throw new BizException(401, "刷新令牌已使用或已失效，请重新登录");
+        }
         return buildResponse(user);
     }
 
@@ -101,9 +107,11 @@ public class AuthService {
     }
 
     private AuthResponse buildResponse(SysUser user) {
+        String refreshJti = refreshTokenStore.issue(
+                user.getUsername(), jwtService.refreshTtlSeconds());
         return new AuthResponse(
                 jwtService.issueAccess(user),
-                jwtService.issueRefresh(user),
+                jwtService.issueRefresh(user, refreshJti),
                 jwtService.accessTtlSeconds(),
                 toUserInfo(user));
     }
