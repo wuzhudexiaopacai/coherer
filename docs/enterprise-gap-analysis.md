@@ -2,10 +2,10 @@
 
 | 项目 | 内容 |
 |---|---|
-| 审计版本 | `fc1a798`（M2.6：多条件告警规则） |
+| 审计版本 | `705d67d`（B+ 整改完成：数据权限、端口收敛、幂等批量、告警 Redis、可观测、CI） |
 | 审计日期 | 2026-11-14 |
 | 审计范围 | 后端、前端、模拟器、部署编排、测试与文档 |
-| 结论 | **可演示、不可直接生产**：架构骨架具备企业形态，安全与运维仍是演示级 |
+| 结论 | **可作为生产基线**：P0 安全与可靠性阻断项已整改；剩余为高可用、多租户与功能完整性 |
 
 > 企业级判定维度：安全合规、可靠性/可扩展、可观测、可维护、测试与交付工程化、功能完整性。
 
@@ -14,14 +14,14 @@
 | 维度 | 评分 | 主要依据 |
 |---|:-:|---|
 | 架构设计 | 6/10 | 分层清晰、文档齐全、MQTT/平台边界正确；但单体、单点、扩展性未验证 |
-| 安全 | 3/10 | 无用户认证/RBAC；内部接口与 MQTT 凭证接口开放；密钥硬编码；内部链路明文 |
-| 可靠性/性能 | 4/10 | 单消费者逐条写库、告警状态在内存、无幂等/水位/批量、无 HA |
-| 可观测性 | 3/10 | 仅 Actuator health/info；无 Prometheus 指标、trace-id、审计日志 |
-| 测试质量 | 4/10 | 32 个单元测试；无 Controller/集成/前端测试，无覆盖率门禁 |
+| 安全 | 7/10 | JWT+RBAC、内部令牌、密钥外置、REST 数据权限、端口收敛、Redis/TDengine 口令；剩余 WSS 默认与 PG/TD TLS |
+| 可靠性/性能 | 6/10 | 幂等去重、有界队列批量写入、停机冲刷、告警状态 Redis 一致、在线 TTL 兜底；剩余无 HA 与压测 |
+| 可观测性 | 9/10 | Prometheus+Grafana+Alertmanager、Zipkin 链路、ECS 结构化日志、审计日志、探针分组 |
+| 测试质量 | 5/10 | 109 个单元测试覆盖权限/幂等/告警/遥测；仍缺 Controller/Testcontainers/前端测试 |
 | 功能完整度 | 6/10 | 核心链路完整；需求文档中多项 M2 功能未实现 |
-| 交付工程化 | 3/10 | 无 CI/CD、无 OpenAPI、无环境分层、无镜像发布流程 |
+| 交付工程化 | 5/10 | GitHub Actions（测试/构建/配置校验）、环境分层、Compose 一键启动；剩余镜像发布与 OpenAPI |
 
-**一句话结论：架构骨架是企业的，安全与运维是演示的。**
+**一句话结论：核心链路已具备生产基线，横向扩展与合规运营仍需补齐。**
 
 ## 2. P0：生产阻断项
 
@@ -204,13 +204,13 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 |---|---|---|
 | A1 密钥外置与环境分层 | ✅ 2026-11-14 | `application.yml` 全部改为环境变量；新增 `backend/.env.example`、`deploy/.env.example`；缺少变量启动即失败；Compose 数据库密码从 `deploy/.env` 注入 |
 | A2 用户认证 + RBAC | ✅ 2026-11-14 | Spring Security 无状态 JWT（access + refresh）；ADMIN / OPERATOR / VIEWER 路由级 RBAC；前端登录页、路由守卫、按角色隐藏写操作；46 个单测通过 |
-| A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户可获取，用户名内嵌 userId/过期时间；ACL 按用户空间（含子空间）限制设备订阅；**REST 接口的数据权限仍待补** |
+| A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户；ACL 按用户空间限制订阅；**REST 数据权限已补齐**（DataScope/DeviceAccessService） |
 | A4 限流与 HTTP 语义 | ✅ 2026-11-14 | 登录失败 5 次/5 分钟限流（同用户名+IP，429）；分页 size 上限 100；`BizException` 按 401/403/404/409 返回 |
-| A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；EMQX Dashboard 口令已轮换（默认 public 失效）；WSS 地址可配置（信任 CA 后启用）；PG/Redis/TDengine TLS 待补 |
-| B 可观测性 | 🟡 部分完成 | Prometheus 指标、Grafana 看板、9 条告警规则、ECS 结构化日志、MQTT→入库 traceId、关键操作审计已上线；readiness/liveness 与慢查询面板待补 |
-| C 可靠性/M3 | ⬜ 待开始 | Kafka 分区、幂等、水位、批量写入 |
-| D 测试与 CI | ⬜ 待开始 | Testcontainers、前端测试、覆盖率门禁、Actions |
+| A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；Dashboard 口令轮换；**所有基础设施端口收敛到 127.0.0.1**；**Redis requirepass + TDengine 强制口令**；**指标端点要求内部令牌**；WSS 默认与 PG/TD TLS 待补 |
+| B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
+| C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 109 个测试 + 打包、前端 type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、前端单测、覆盖率门禁待补 |
 | E 功能补齐 | ⬜ 待开始 | 设备启停、事件、区间聚合、通知、规则版本等 |
 | F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
 
-> 复核说明（B 后）：认证、RBAC、内部链路与可观测性已补齐，安全评分约 6/10、可观测性约 8/10；剩余缺口为**按用户/空间的数据权限**、**PG/Redis/TDengine TLS/WSS 信任链**、**readiness/liveness 与慢查询面板**。
+> 复核说明（B+ 后）：数据权限、端口收敛、幂等批量、告警一致性、链路追踪、审计补全与 CI 均已落地，安全约 7/10、可靠性约 6/10、可观测约 9/10；剩余缺口为 **PG/Redis/TDengine TLS 与 WSS 默认**、**Kafka/水位/HA 与压测**、**Testcontainers 与前端测试**、**多租户与设备生命周期/命令/OTA**。

@@ -85,6 +85,7 @@ python simulator.py --credentials creds.json --tls
 #    Prometheus: http://localhost:9090 （抓取 /actuator/prometheus）
 #    Grafana: http://localhost:3000 (admin / GRAFANA_ADMIN_PASSWORD)
 #    Alertmanager: http://localhost:9093
+#    Zipkin: http://localhost:9411 （按 traceId 查调用链）
 #
 # 可选：HTTPS Profile（本地自签 CA）
 #    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
@@ -106,16 +107,21 @@ npm run dev
 |---|---|
 | 指标 | `GET /actuator/prometheus`（需 `X-Internal-Token`，Prometheus 已自动带入）；抓取目标见 http://localhost:9090/targets |
 | 看板 | Grafana 自动装配「Coherer IoT 平台总览」（JVM、HTTP QPS/P95、MQTT、遥测、告警、登录失败） |
-| 告警规则 | Prometheus 内置 9 条规则（后端不可达、MQTT 断连、遥测拒绝率/静默、告警风暴、登录爆破、5xx、P95、堆内存），Alertmanager 查看 |
-| 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected` |
+| 告警规则 | Prometheus 内置 9 条规则（后端不可达、MQTT 断连、遥测拒绝率/静默、告警风暴、登录爆破、5xx、P95、堆内存）；critical 走独立路由，含 2 条抑制规则 |
+| 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected`、`coherer_telemetry_buffer_size` |
 | 结构化日志 | ECS JSON 输出到控制台；每条日志带 `service.name`、`process.pid`、`traceId`、`spanId` |
-| 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警评估 |
-| 审计日志 | 登录、设备注册、产品/物模型、告警确认/关闭、规则与空间变更；ADMIN 通过 `GET /api/audit-logs` 查询 |
+| 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警；span 上报 Zipkin http://localhost:9411 |
+| 审计日志 | 登录、设备注册、产品/物模型、告警确认/关闭、规则与空间变更；ADMIN 通过 `GET /api/audit-logs` 查询，含 traceId、结果、User-Agent、真实客户端 IP |
+| 探针 | `/actuator/health/liveness`（进程存活）、`/actuator/health/readiness`（db/redis/disk） |
 
 ```bash
 # 查看审计日志（先登录拿 token）
 curl -H "Authorization: Bearer <accessToken>" \
   "http://localhost:8081/api/audit-logs?current=1&size=20&action=LOGIN_SUCCESS"
+
+# 只看失败操作
+curl -H "Authorization: Bearer <accessToken>" \
+  "http://localhost:8081/api/audit-logs?result=FAILURE"
 ```
 
 ## 目录结构
@@ -135,9 +141,9 @@ coherer/
 |---|---|---|
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
 | M2 | 物模型、设备影子、LWT 在线状态、TDengine、前端看板、告警 v1（多条件 + 滞回）、mqtt.js 实时推送、设备 ACL、空间树 | ✅ 已完成 |
-| M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、批量写入、共享订阅 | ⬜ |
+| M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、时间水位 | 🟡 批量写入/幂等/共享订阅已完成，Kafka 与拆服务待做 |
 | M4 | OTA、场景联动、mTLS 加固、多租户 | ⬜ |
-| M5 | K8s+Helm、Prometheus+Grafana、10 万连接压测报告 | ⬜ |
+| M5 | K8s+Helm、HA、10 万连接压测报告 | 🟡 Prometheus/Grafana/Alertmanager/Zipkin 已完成，HA 与压测待做 |
 
 ## 文档
 
