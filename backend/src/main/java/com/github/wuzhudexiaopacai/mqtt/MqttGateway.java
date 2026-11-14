@@ -261,13 +261,13 @@ public class MqttGateway implements CommandPublisher {
         try {
             switch (kind) {
                 case "telemetry" -> {
-                    // 任何遥测都说明设备在线，用于在线标记续期
-                    deviceStatusService.heartbeat(deviceId);
+                    // 先入库再续期：在线状态是旁路，任何异常都不能影响数据
                     telemetryService.ingest(tenantId, deviceId, payload);
+                    deviceStatusService.heartbeat(deviceId);
                 }
                 case "shadow" -> {
-                    deviceStatusService.heartbeat(deviceId);
                     shadowService.onReported(tenantId, deviceId, payload);
+                    deviceStatusService.heartbeat(deviceId);
                 }
                 case "status" -> deviceStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));

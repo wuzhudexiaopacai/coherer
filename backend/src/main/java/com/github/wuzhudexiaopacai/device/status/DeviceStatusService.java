@@ -61,12 +61,18 @@ public class DeviceStatusService {
      * 才落库，避免每条消息一次 UPDATE。</p>
      */
     public void heartbeat(String deviceId) {
-        String key = REDIS_KEY_PREFIX + deviceId;
-        Boolean existed = redisTemplate.expire(key, Duration.ofSeconds(onlineTtlSeconds));
-        if (Boolean.TRUE.equals(existed)) {
-            return;
+        try {
+            String key = REDIS_KEY_PREFIX + deviceId;
+            Boolean existed = redisTemplate.expire(key, Duration.ofSeconds(onlineTtlSeconds));
+            if (Boolean.TRUE.equals(existed)) {
+                return;
+            }
+            markOnline(deviceId);
+        } catch (Exception e) {
+            // 在线状态是旁路信息：Redis 故障不能反过来阻塞遥测入库
+            meterRegistry.counter("coherer.device.status.redis_error").increment();
+            log.warn("在线心跳续期失败（忽略） deviceId={} err={}", deviceId, e.getMessage());
         }
-        markOnline(deviceId);
     }
 
     private void markOnline(String deviceId) {
@@ -76,8 +82,13 @@ public class DeviceStatusService {
                 .ne(Device::getStatus, "ONLINE")
                 .set(Device::getStatus, "ONLINE")
                 .set(Device::getLastOnlineAt, OffsetDateTime.now()));
-        redisTemplate.opsForValue().set(REDIS_KEY_PREFIX + deviceId, "online",
-                Duration.ofSeconds(onlineTtlSeconds));
+        try {
+            redisTemplate.opsForValue().set(REDIS_KEY_PREFIX + deviceId, "online",
+                    Duration.ofSeconds(onlineTtlSeconds));
+        } catch (Exception e) {
+            meterRegistry.counter("coherer.device.status.redis_error").increment();
+            log.warn("在线标记写入失败 deviceId={} err={}", deviceId, e.getMessage());
+        }
         if (updated > 0) {
             deviceLookupService.invalidate(deviceId);
         }
@@ -88,7 +99,12 @@ public class DeviceStatusService {
                 .eq(Device::getDeviceId, deviceId)
                 .eq(Device::getStatus, "ONLINE")
                 .set(Device::getStatus, "OFFLINE"));
-        redisTemplate.opsForValue().set(REDIS_KEY_PREFIX + deviceId, "offline");
+        try {
+            redisTemplate.opsForValue().set(REDIS_KEY_PREFIX + deviceId, "offline");
+        } catch (Exception e) {
+            meterRegistry.counter("coherer.device.status.redis_error").increment();
+            log.warn("离线标记写入失败 deviceId={} err={}", deviceId, e.getMessage());
+        }
         if (updated > 0) {
             deviceLookupService.invalidate(deviceId);
         }
@@ -117,7 +133,15 @@ public class DeviceStatusService {
         int marked = 0;
         for (Device device : onlineDevices) {
             String deviceId = device.getDeviceId();
-            Boolean alive = redisTemplate.hasKey(REDIS_KEY_PREFIX + deviceId);
+            Boolean alive;
+            try {
+                alive = redisTemplate.hasKey(REDIS_KEY_PREFIX + deviceId);
+            } catch (Exception e) {
+                // Redis 整体不可用时无法判断存活，宁可本轮不回收也不能误判全量离线
+                meterRegistry.counter("coherer.device.status.redis_error").increment();
+                log.warn("在线巡检因 Redis 不可用中止: {}", e.getMessage());
+                return;
+            }
             if (Boolean.TRUE.equals(alive)) {
                 continue;
             }

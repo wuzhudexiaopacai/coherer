@@ -100,6 +100,40 @@ class DeviceStatusServiceTest {
     }
 
     @Test
+    void heartbeat_redisDown_doesNotThrow() {
+        when(redisTemplate.expire(anyString(), any(Duration.class)))
+                .thenThrow(new RuntimeException("redis down"));
+
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.heartbeat("dev-1"));
+        verify(deviceMapper, never()).update(any(), any());
+    }
+
+    @Test
+    void heartbeat_markerWriteFails_stillUpdatesDatabase() {
+        when(redisTemplate.expire(anyString(), any(Duration.class))).thenReturn(false);
+        when(deviceMapper.update(any(), any())).thenReturn(1);
+        org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
+                .when(valueOperations).set(anyString(), anyString(), any(Duration.class));
+
+        // Redis 写失败不能影响设备状态落库，更不能影响遥测主链路
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.heartbeat("dev-1"));
+        verify(deviceMapper).update(any(), any());
+    }
+
+    @Test
+    void sweep_redisDown_doesNotMassMarkOffline() {
+        Device device = new Device();
+        device.setDeviceId("dev-1");
+        when(deviceMapper.selectList(any())).thenReturn(List.of(device));
+        when(redisTemplate.hasKey("coherer:status:device:dev-1"))
+                .thenThrow(new RuntimeException("redis down"));
+
+        service.sweepStaleOnline();
+
+        verify(deviceMapper, never()).update(any(), any());
+    }
+
+    @Test
     void sweep_withoutMarker_marksOffline() {
         Device device = new Device();
         device.setDeviceId("dev-1");
