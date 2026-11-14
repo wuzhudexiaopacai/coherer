@@ -1,10 +1,12 @@
 package com.github.wuzhudexiaopacai.shadow.controller;
 
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.shadow.dto.ShadowDesiredRequest;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.shadow.vo.ShadowVO;
 import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShadowController {
 
     private final ShadowService shadowService;
+    private final AuditLogService auditLogService;
 
     @GetMapping
     public ApiResponse<ShadowVO> get(@PathVariable String deviceId) {
@@ -28,6 +31,10 @@ public class ShadowController {
     @PutMapping("/desired")
     public ApiResponse<ShadowVO> updateDesired(@PathVariable String deviceId,
                                                @Valid @RequestBody ShadowDesiredRequest request) {
-        return ApiResponse.ok(shadowService.updateDesired(deviceId, request));
+        ShadowVO vo = shadowService.updateDesired(deviceId, request);
+        auditLogService.record("SHADOW_DESIRED_UPDATE", "shadow", Map.of(
+                "deviceId", deviceId,
+                "version", vo.getVersion()));
+        return ApiResponse.ok(vo);
     }
 }

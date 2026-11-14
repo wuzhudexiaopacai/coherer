@@ -48,7 +48,9 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/api/auth/refresh",
-                                "/api/ping", "/actuator/health", "/internal/**").permitAll()
+                                "/api/ping", "/actuator/health",
+                                "/actuator/prometheus", "/internal/**").permitAll()
+                        .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         // RBAC：只读角色仅允许 GET；写操作要求 ADMIN / OPERATOR
                         .requestMatchers(HttpMethod.GET, "/api/**")
                         .hasAnyRole("ADMIN", "OPERATOR", "VIEWER")

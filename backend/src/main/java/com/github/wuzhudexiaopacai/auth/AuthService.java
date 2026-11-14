@@ -7,9 +7,12 @@ import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
 import com.github.wuzhudexiaopacai.auth.vo.UserInfoVO;
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
 import io.jsonwebtoken.Claims;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,20 +25,31 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final LoginAttemptService loginAttemptService;
+    private final AuditLogService auditLogService;
+    private final MeterRegistry meterRegistry;
 
     public AuthResponse login(LoginRequest request, String clientIp) {
         if (loginAttemptService.isBlocked(request.getUsername(), clientIp)) {
+            auditLogService.recordAs(request.getUsername(), clientIp, "LOGIN_BLOCKED", "auth",
+                    Map.of("reason", "rate_limited"));
             throw new BizException(429, "登录尝试过于频繁，请稍后再试");
         }
         SysUser user = findByUsername(request.getUsername());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             loginAttemptService.recordFailure(request.getUsername(), clientIp);
+            meterRegistry.counter("coherer.auth.login.failures").increment();
+            auditLogService.recordAs(request.getUsername(), clientIp, "LOGIN_FAILURE", "auth",
+                    Map.of("reason", "bad_credentials"));
             throw new BizException(401, "用户名或密码错误");
         }
         if (!"ACTIVE".equals(user.getStatus())) {
+            auditLogService.recordAs(request.getUsername(), clientIp, "LOGIN_FAILURE", "auth",
+                    Map.of("reason", "disabled"));
             throw new BizException(403, "账号已禁用");
         }
         loginAttemptService.reset(request.getUsername(), clientIp);
+        auditLogService.recordAs(user.getUsername(), clientIp, "LOGIN_SUCCESS", "auth",
+                Map.of("role", user.getRole()));
         return buildResponse(user);
     }
 

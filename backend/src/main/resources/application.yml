@@ -38,9 +38,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: ${COHERER_TRACING_SAMPLE_RATE:1.0}
 
 logging:
+  # 结构化 JSON 日志（ECS 格式，包含 traceId/spanId）
+  structured:
+    format:
+      console: ecs
   level:
     # 开发期输出认证拒绝原因，便于联调
     com.github.wuzhudexiaopacai.internal.auth: DEBUG

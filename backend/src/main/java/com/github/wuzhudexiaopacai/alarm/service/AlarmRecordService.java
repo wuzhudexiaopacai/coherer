@@ -15,6 +15,7 @@ import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -40,6 +41,7 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
 
     private final AlarmRuleService alarmRuleService;
     private final SpaceService spaceService;
+    private final MeterRegistry meterRegistry;
 
     private final Cache<String, Long> conditionStart = Caffeine.newBuilder()
             .expireAfterAccess(Duration.ofHours(1))
@@ -172,6 +174,7 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         String current = value == null ? "" : String.format("（当前 %.2f）", value);
         record.setMessage(rule.getName() + "：" + tree.summary() + current);
         save(record);
+        meterRegistry.counter("coherer.alarm.triggered", "level", rule.getLevel()).increment();
         log.info("告警触发 rule={} deviceId={} value={}", rule.getName(), device.getDeviceId(), value);
     }
 

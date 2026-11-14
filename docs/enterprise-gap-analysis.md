@@ -127,6 +127,14 @@
 - readiness/liveness 分离；关键路径慢查询/错误率看板。
 - 审计日志：规则变更、告警确认/关闭、设备启停。
 
+**B 已完成（2026-11-14）**
+
+- Micrometer Prometheus registry；`/actuator/prometheus` 暴露 JVM/HTTP/自定义指标；Compose 内置 Prometheus 抓取任务。
+- 自定义指标：`coherer.telemetry.ingested{result=ok|rejected|error}`、`coherer.alarm.triggered{level}`、`coherer.auth.login.failures`、`coherer.mqtt.connected`。
+- ECS 结构化 JSON 控制台日志；Brave + Micrometer Tracing，MQTT 入口为每条消息创建 `mqtt.message` span，traceId/spanId 贯穿消费、校验、入库与告警日志。
+- `audit_log`（V10）+ 仅 ADMIN 可查的 `GET /api/audit-logs`；已覆盖登录成功/失败/限流、设备注册、产品与物模型变更、告警确认/关闭、告警规则增删改、空间增删改、影子期望值下发。
+- 待补：Grafana 看板、Prometheus 告警规则、readiness/liveness 分离、慢查询/错误率面板。
+
 ### 阶段 C：可靠性与扩展（1~2 周，与 M3 合并）
 
 - Kafka 按 `deviceId` 分区消费；TDengine 批量写入；幂等去重（deviceId+ts/messageId）。
@@ -154,7 +162,9 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 - [ ] 无任何硬编码密码/密钥，`.env.example` 完整
 - [ ] 分页有上限，404/409/401/403 状态码语义正确
 - [ ] 内部链路 TLS 或网络隔离，Dashboard 无默认口令
-- [ ] Prometheus 指标、trace-id、Grafana 看板可用
+- [x] Prometheus 指标与 trace-id 可用（Grafana 看板待补）
+- [x] 关键操作审计日志可查询（ADMIN）
+- [ ] Grafana 看板与 Prometheus 告警规则
 - [ ] 告警状态与水位可在多实例间一致
 - [ ] TDengine 批量写入 + 幂等，压测达到目标吞吐
 - [ ] CI 门禁：测试 + 覆盖率 + 镜像扫描通过
@@ -168,7 +178,7 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 - MQTT 签名认证 + 主题级 ACL（HTTP 回调）、共享订阅、遗嘱消息、TLS 设备接入。
 - Caffeine 热缓存、事件驱动解耦（影子下发）、TDengine 时序存储、空间树过滤。
 - 前端设计系统（Apple + 企业风格）、路由懒加载、可访问性基础、响应式。
-- 文档体系（需求/设计/架构/路线图）与 32 个单元测试。
+- 文档体系（需求/设计/架构/路线图）与 54 个单元测试。
 
 ## 8. 证据索引
 
@@ -195,10 +205,10 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户可获取，用户名内嵌 userId/过期时间；ACL 按用户空间（含子空间）限制设备订阅；**REST 接口的数据权限仍待补** |
 | A4 限流与 HTTP 语义 | ✅ 2026-11-14 | 登录失败 5 次/5 分钟限流（同用户名+IP，429）；分页 size 上限 100；`BizException` 按 401/403/404/409 返回 |
 | A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；EMQX Dashboard 口令已轮换（默认 public 失效）；WSS 地址可配置（信任 CA 后启用）；PG/Redis/TDengine TLS 待补 |
-| B 可观测性 | ⬜ 待开始 | Prometheus、trace-id、审计日志 |
+| B 可观测性 | 🟡 部分完成 | Prometheus 指标、ECS 结构化日志、MQTT→入库 traceId、关键操作审计已上线；Grafana 看板、告警规则、readiness/liveness 待补 |
 | C 可靠性/M3 | ⬜ 待开始 | Kafka 分区、幂等、水位、批量写入 |
 | D 测试与 CI | ⬜ 待开始 | Testcontainers、前端测试、覆盖率门禁、Actions |
 | E 功能补齐 | ⬜ 待开始 | 设备启停、事件、区间聚合、通知、规则版本等 |
 | F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
 
-> 复核说明（A2 后）：认证与 RBAC 已补齐，安全评分由 3/10 提升至约 6/10；剩余安全缺口为**按用户/空间的数据权限**、**传输层 TLS/WSS** 与**限流/审计**。
+> 复核说明（B 后）：认证、RBAC、内部链路与可观测性已补齐，安全评分约 6/10、可观测性约 7/10；剩余缺口为**按用户/空间的数据权限**、**PG/Redis/TDengine TLS/WSS 信任链**、**Grafana 看板与告警规则**。

@@ -119,6 +119,17 @@ services:
       - td-data:/var/lib/taos
       - td-log:/var/log/taos
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: coherer-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   emqx-data:
   emqx-log:

@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.telemetry.TelemetryTdStore;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
 import com.github.wuzhudexiaopacai.thingmodel.entity.ThingModel;
 import com.github.wuzhudexiaopacai.thingmodel.service.ThingModelService;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ public class TelemetryService {
     private final ThingModelService thingModelService;
     private final TelemetryTdStore tdStore;
     private final AlarmRecordService alarmRecordService;
+    private final MeterRegistry meterRegistry;
 
     public void ingest(String tenantId, String deviceId, byte[] payload) {
         try {
@@ -58,9 +60,12 @@ public class TelemetryService {
             long ts = root.path("ts").asLong(System.currentTimeMillis());
             tdStore.insert(tenantId, deviceId, device.getProductId(), ts, normalized);
             alarmRecordService.evaluate(device, normalized);
+            meterRegistry.counter("coherer.telemetry.ingested", "result", "ok").increment();
         } catch (IllegalArgumentException e) {
+            meterRegistry.counter("coherer.telemetry.ingested", "result", "rejected").increment();
             log.warn("遥测校验失败 deviceId={} err={}", deviceId, e.getMessage());
         } catch (Exception e) {
+            meterRegistry.counter("coherer.telemetry.ingested", "result", "error").increment();
             log.warn("遥测处理失败 deviceId={} err={}", deviceId, e.getMessage());
         }
     }

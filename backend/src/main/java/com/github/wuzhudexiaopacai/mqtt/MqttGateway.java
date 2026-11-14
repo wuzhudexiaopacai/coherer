@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.observation.Observation;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
@@ -46,6 +49,8 @@ public class MqttGateway {
     private final ShadowService shadowService;
     private final DeviceStatusService deviceStatusService;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
+    private final ObservationRegistry observationRegistry;
 
     @Value("${coherer.mqtt.broker-host}")
     private String brokerHost;
@@ -78,6 +83,8 @@ public class MqttGateway {
                     (tlsEnabled ? "ssl" : "tcp") + "://" + brokerHost + ":" + brokerPort,
                     clientId,
                     new MemoryPersistence());
+            meterRegistry.gauge("coherer.mqtt.connected", client,
+                    c -> c.isConnected() ? 1.0 : 0.0);
             client.setCallback(new MqttCallbackExtended() {
                 @Override
                 public void connectComplete(boolean reconnect, String serverURI) {
@@ -188,18 +195,39 @@ public class MqttGateway {
         if (levels.length < 3) {
             return;
         }
-        String tenantId = levels[0];
-        String deviceId = levels[1];
+        String kind = topicKind(levels);
+        if (kind == null) {
+            return;
+        }
+        // MQTT 入口不起新 trace 会与上游断链；每条消息独立 span 便于按 traceId 追踪
+        Observation.createNotStarted("mqtt.message", observationRegistry)
+                .lowCardinalityKeyValue("kind", kind)
+                .observe(() -> handle(kind, levels[0], levels[1], topic, payload));
+    }
+
+    private String topicKind(String[] levels) {
+        if (levels.length == 5 && "thing".equals(levels[2])
+                && "property".equals(levels[3]) && "report".equals(levels[4])) {
+            return "telemetry";
+        }
+        if (levels.length == 4 && "shadow".equals(levels[2]) && "report".equals(levels[3])) {
+            return "shadow";
+        }
+        if (levels.length == 3 && "status".equals(levels[2])) {
+            return "status";
+        }
+        return null;
+    }
+
+    private void handle(String kind, String tenantId, String deviceId, String topic, byte[] payload) {
         try {
-            if (levels.length == 5 && "thing".equals(levels[2])
-                    && "property".equals(levels[3]) && "report".equals(levels[4])) {
-                telemetryService.ingest(tenantId, deviceId, payload);
-            } else if (levels.length == 4 && "shadow".equals(levels[2])
-                    && "report".equals(levels[3])) {
-                shadowService.onReported(tenantId, deviceId, payload);
-            } else if (levels.length == 3 && "status".equals(levels[2])) {
-                deviceStatusService.onStatus(tenantId, deviceId,
+            switch (kind) {
+                case "telemetry" -> telemetryService.ingest(tenantId, deviceId, payload);
+                case "shadow" -> shadowService.onReported(tenantId, deviceId, payload);
+                case "status" -> deviceStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));
+                default -> {
+                }
             }
         } catch (Exception e) {
             log.warn("MQTT 消息处理失败 topic={} err={}", topic, e.getMessage());

@@ -79,6 +79,7 @@ python simulator.py --credentials creds.json --tls
 # 5. 查看数据
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
 #    EMQX 控制台: http://localhost:18083 (admin / EMQX_DASHBOARD_PASSWORD)
+#    Prometheus: http://localhost:9090 （抓取 /actuator/prometheus）
 #
 # 可选：HTTPS Profile（本地自签 CA）
 #    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
@@ -93,6 +94,22 @@ npm run dev
 ```
 
 > ⚠️ EMQX 已开启 **HTTP 签名认证 + 主题级 ACL**：设备只能访问自身 tenant/deviceId 主题；浏览器实时订阅使用后端签发的短时凭证；Dashboard 的 WebSocket 测试客户端因不具备设备签名会被拒绝。
+
+## 可观测性
+
+| 能力 | 入口 / 说明 |
+|---|---|
+| 指标 | `GET /actuator/prometheus`；Prometheus 已在 Compose 中，抓取目标见 http://localhost:9090/targets |
+| 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected` |
+| 结构化日志 | ECS JSON 输出到控制台；每条日志带 `service.name`、`process.pid`、`traceId`、`spanId` |
+| 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警评估 |
+| 审计日志 | 登录、设备注册、产品/物模型、告警确认/关闭、规则与空间变更；ADMIN 通过 `GET /api/audit-logs` 查询 |
+
+```bash
+# 查看审计日志（先登录拿 token）
+curl -H "Authorization: Bearer <accessToken>" \
+  "http://localhost:8081/api/audit-logs?current=1&size=20&action=LOGIN_SUCCESS"
+```
 
 ## 目录结构
 

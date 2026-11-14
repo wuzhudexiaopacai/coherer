@@ -16,6 +16,7 @@ import com.github.wuzhudexiaopacai.alarm.entity.AlarmRule;
 import com.github.wuzhudexiaopacai.alarm.mapper.AlarmRecordMapper;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -39,7 +40,8 @@ class AlarmRecordServiceTest {
 
         ruleService = mock(AlarmRuleService.class);
         mapper = mock(AlarmRecordMapper.class);
-        service = new AlarmRecordService(ruleService, mock(SpaceService.class));
+        service = new AlarmRecordService(ruleService, mock(SpaceService.class),
+                new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
 
         device = new Device();

@@ -12,8 +12,10 @@ import com.github.wuzhudexiaopacai.auth.dto.RefreshRequest;
 import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -31,7 +33,8 @@ class AuthServiceTest {
         userMapper = mock(SysUserMapper.class);
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
-        authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService());
+        authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService(),
+                mock(AuditLogService.class), new SimpleMeterRegistry());
 
         user = new SysUser();
         user.setId(1L);

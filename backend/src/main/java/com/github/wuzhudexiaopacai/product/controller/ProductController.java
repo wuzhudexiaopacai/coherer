@@ -1,5 +1,6 @@
 package com.github.wuzhudexiaopacai.product.controller;
 
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
@@ -8,6 +9,7 @@ import com.github.wuzhudexiaopacai.product.dto.ProductUpdateRequest;
 import com.github.wuzhudexiaopacai.product.service.ProductService;
 import com.github.wuzhudexiaopacai.product.vo.ProductVO;
 import jakarta.validation.Valid;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,10 +27,15 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProductController {
 
     private final ProductService productService;
+    private final AuditLogService auditLogService;
 
     @PostMapping
     public ApiResponse<ProductVO> create(@Valid @RequestBody ProductCreateRequest request) {
-        return ApiResponse.ok(productService.create(request));
+        ProductVO vo = productService.create(request);
+        auditLogService.record("PRODUCT_CREATE", "product", Map.of(
+                "id", String.valueOf(vo.getId()),
+                "name", String.valueOf(vo.getName())));
+        return ApiResponse.ok(vo);
     }
 
     @GetMapping
@@ -48,12 +55,17 @@ public class ProductController {
     @PutMapping("/{id}")
     public ApiResponse<ProductVO> update(@PathVariable Long id,
                                          @Valid @RequestBody ProductUpdateRequest request) {
-        return ApiResponse.ok(productService.update(id, request));
+        ProductVO vo = productService.update(id, request);
+        auditLogService.record("PRODUCT_UPDATE", "product", Map.of(
+                "id", String.valueOf(id),
+                "name", String.valueOf(vo.getName())));
+        return ApiResponse.ok(vo);
     }
 
     @DeleteMapping("/{id}")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         productService.delete(id);
+        auditLogService.record("PRODUCT_DELETE", "product", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
     }
 }

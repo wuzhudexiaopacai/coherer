@@ -3,12 +3,14 @@ package com.github.wuzhudexiaopacai.device.controller;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.device.dto.DeviceRegisterRequest;
 import com.github.wuzhudexiaopacai.device.service.DeviceService;
 import com.github.wuzhudexiaopacai.device.vo.DeviceRegisterResult;
 import com.github.wuzhudexiaopacai.device.vo.DeviceVO;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,11 +26,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final AuditLogService auditLogService;
 
     @PostMapping
     public ApiResponse<List<DeviceRegisterResult>> register(
             @Valid @RequestBody DeviceRegisterRequest request) {
-        return ApiResponse.ok(deviceService.register(request));
+        List<DeviceRegisterResult> results = deviceService.register(request);
+        auditLogService.record("DEVICE_REGISTER", "device", Map.of(
+                "productId", String.valueOf(request.getProductId()),
+                "count", results.size()));
+        return ApiResponse.ok(results);
     }
 
     @GetMapping

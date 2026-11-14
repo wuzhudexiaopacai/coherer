@@ -2,9 +2,11 @@ package com.github.wuzhudexiaopacai.alarm.controller;
 
 import com.github.wuzhudexiaopacai.alarm.service.AlarmRecordService;
 import com.github.wuzhudexiaopacai.alarm.vo.AlarmRecordVO;
+import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlarmController {
 
     private final AlarmRecordService alarmRecordService;
+    private final AuditLogService auditLogService;
 
     @GetMapping
     public ApiResponse<PageResult<AlarmRecordVO>> page(
@@ -36,12 +39,14 @@ public class AlarmController {
     @PostMapping("/{id}/ack")
     public ApiResponse<Void> acknowledge(@PathVariable Long id) {
         alarmRecordService.acknowledge(id);
+        auditLogService.record("ALARM_ACK", "alarm", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
     }
 
     @PostMapping("/{id}/close")
     public ApiResponse<Void> close(@PathVariable Long id) {
         alarmRecordService.close(id);
+        auditLogService.record("ALARM_CLOSE", "alarm", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
     }
 }
