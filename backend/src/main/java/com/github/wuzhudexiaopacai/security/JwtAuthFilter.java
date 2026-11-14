@@ -13,13 +13,15 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** 解析 Bearer JWT，写入 SecurityContext。 */
+/** 解析 Bearer JWT，写入 SecurityContext；同时校验用户状态与令牌版本。 */
 public class JwtAuthFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
+    private final TokenSessionValidator sessionValidator;
 
-    public JwtAuthFilter(JwtService jwtService) {
+    public JwtAuthFilter(JwtService jwtService, TokenSessionValidator sessionValidator) {
         this.jwtService = jwtService;
+        this.sessionValidator = sessionValidator;
     }
 
     @Override
@@ -29,13 +31,18 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 Claims claims = jwtService.parseAccess(header.substring(7));
-                String role = claims.get("role", String.class);
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                claims.getSubject(), null,
-                                List.of(new SimpleGrantedAuthority("ROLE_" + role)));
-                authentication.setDetails(claims);
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                Integer tokenVersion = claims.get("ver", Integer.class);
+                if (!sessionValidator.isValid(claims.getSubject(), tokenVersion)) {
+                    SecurityContextHolder.clearContext();
+                } else {
+                    String role = claims.get("role", String.class);
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    claims.getSubject(), null,
+                                    List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+                    authentication.setDetails(claims);
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             } catch (Exception e) {
                 SecurityContextHolder.clearContext();
             }

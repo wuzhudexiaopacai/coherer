@@ -23,13 +23,16 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 public class SecurityConfig {
 
     private final JwtService jwtService;
+    private final TokenSessionValidator sessionValidator;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
     public SecurityConfig(JwtService jwtService,
+                          TokenSessionValidator sessionValidator,
                           ObjectMapper objectMapper,
                           @Value("${coherer.security.internal-token}") String internalToken) {
         this.jwtService = jwtService;
+        this.sessionValidator = sessionValidator;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -62,7 +65,8 @@ public class SecurityConfig {
                                 writeJson(response, 401, "未登录或登录已过期"))
                         .accessDeniedHandler((request, response, exception) ->
                                 writeJson(response, 403, "无权限执行该操作")))
-                .addFilterBefore(new JwtAuthFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new JwtAuthFilter(jwtService, sessionValidator),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new InternalTokenFilter(internalToken),
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();

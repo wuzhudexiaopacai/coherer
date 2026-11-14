@@ -11,6 +11,7 @@ import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.UserVO;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
@@ -31,6 +32,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
 
     private final PasswordEncoder passwordEncoder;
     private final SpaceService spaceService;
+    private final TokenSessionValidator sessionValidator;
 
     public PageResult<UserVO> page(long current, long size, String keyword) {
         Page<SysUser> page = page(new Page<>(current, size),
@@ -60,6 +62,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         user.setRole(request.getRole() == null ? "VIEWER" : request.getRole());
         user.setSpaceId(request.getSpaceId());
         user.setStatus("ACTIVE");
+        user.setTokenVersion(0);
         save(user);
         return toVO(user);
     }
@@ -87,13 +90,25 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         if (StringUtils.hasText(request.getNickname())) {
             user.setNickname(request.getNickname());
         }
-        if (StringUtils.hasText(request.getRole())) {
+        boolean revoke = false;
+        if (StringUtils.hasText(request.getRole())
+                && !request.getRole().equals(user.getRole())) {
             user.setRole(request.getRole());
+            revoke = true;
         }
-        if (StringUtils.hasText(request.getStatus())) {
+        if (StringUtils.hasText(request.getStatus())
+                && !request.getStatus().equals(user.getStatus())) {
             user.setStatus(request.getStatus());
+            revoke = true;
+        }
+        if (revoke) {
+            // 角色/状态变化立即吊销旧 token，避免降级后仍保留管理员权限
+            user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
         }
         updateById(user);
+        if (revoke) {
+            sessionValidator.invalidate(user.getUsername());
+        }
         return toVO(user);
     }
 
@@ -101,7 +116,10 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
     public void resetPassword(Long id, PasswordResetRequest request) {
         SysUser user = requireUser(id);
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
+        // 改密后所有旧会话失效
+        user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
         updateById(user);
+        sessionValidator.invalidate(user.getUsername());
     }
 
     @Transactional(rollbackFor = Exception.class)

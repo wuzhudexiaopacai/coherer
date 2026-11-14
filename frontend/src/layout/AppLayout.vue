@@ -29,9 +29,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => unsubscribeRealtime?.())
 
-function handleUserCommand(command: string) {
+async function handleUserCommand(command: string) {
   if (command === 'logout') {
-    auth.logout()
+    await auth.logout()
     router.push('/login')
   }
 }

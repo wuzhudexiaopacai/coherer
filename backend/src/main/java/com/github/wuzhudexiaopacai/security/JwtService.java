@@ -59,6 +59,7 @@ public class JwtService {
                 .subject(user.getUsername())
                 .claim("uid", String.valueOf(user.getId()))
                 .claim("role", user.getRole())
+                .claim("ver", user.getTokenVersion() == null ? 0 : user.getTokenVersion())
                 .claim("type", type)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))

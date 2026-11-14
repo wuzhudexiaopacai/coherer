@@ -18,6 +18,7 @@ import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.UserVO;
 import com.github.wuzhudexiaopacai.common.BizException;
+import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +30,7 @@ class UserServiceTest {
 
     private SysUserMapper mapper;
     private SpaceService spaceService;
+    private TokenSessionValidator sessionValidator;
     private UserService service;
 
     @BeforeEach
@@ -37,7 +39,8 @@ class UserServiceTest {
                 new MapperBuilderAssistant(new MybatisConfiguration(), ""), SysUser.class);
         mapper = mock(SysUserMapper.class);
         spaceService = mock(SpaceService.class);
-        service = new UserService(new BCryptPasswordEncoder(), spaceService);
+        sessionValidator = mock(TokenSessionValidator.class);
+        service = new UserService(new BCryptPasswordEncoder(), spaceService, sessionValidator);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         when(mapper.insert((SysUser) any())).thenReturn(1);
         when(mapper.updateById((SysUser) any())).thenReturn(1);
@@ -135,6 +138,7 @@ class UserServiceTest {
 
         service.resetPassword(2L, request);
 
+        verify(sessionValidator).invalidate("viewer");
         verify(mapper).updateById(org.mockito.ArgumentMatchers.argThat((SysUser user) ->
                 user.getPasswordHash().startsWith("$2a$")
                         && new BCryptPasswordEncoder().matches(

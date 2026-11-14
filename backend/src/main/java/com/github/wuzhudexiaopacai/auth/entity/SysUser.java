@@ -33,6 +33,9 @@ public class SysUser {
     /** ACTIVE / DISABLED */
     private String status;
 
+    /** 令牌版本：禁用、降级、改密、登出时 +1，旧 JWT 立即失效 */
+    private Integer tokenVersion;
+
     @TableField(fill = FieldFill.INSERT)
     private OffsetDateTime createdAt;
 

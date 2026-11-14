@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.auth.vo.UserInfoVO;
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
+import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import io.jsonwebtoken.Claims;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final LoginAttemptService loginAttemptService;
     private final AuditLogService auditLogService;
+    private final TokenSessionValidator sessionValidator;
     private final MeterRegistry meterRegistry;
 
     public AuthResponse login(LoginRequest request, String clientIp) {
@@ -64,7 +66,24 @@ public class AuthService {
         if (user == null || !"ACTIVE".equals(user.getStatus())) {
             throw new BizException(401, "用户不可用");
         }
+        int current = user.getTokenVersion() == null ? 0 : user.getTokenVersion();
+        Integer tokenVersion = claims.get("ver", Integer.class);
+        if ((tokenVersion == null ? 0 : tokenVersion) != current) {
+            throw new BizException(401, "登录状态已失效，请重新登录");
+        }
         return buildResponse(user);
+    }
+
+    /** 退出登录：提升令牌版本，使该用户所有已签发 token 失效。 */
+    public void logout(String username) {
+        SysUser user = findByUsername(username);
+        if (user == null) {
+            return;
+        }
+        user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
+        userMapper.updateById(user);
+        sessionValidator.invalidate(username);
+        auditLogService.record("LOGOUT", "auth", Map.of());
     }
 
     public UserInfoVO me(String username) {

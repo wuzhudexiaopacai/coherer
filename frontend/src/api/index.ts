@@ -32,6 +32,8 @@ export const api = {
 
   me: () => request<UserInfo>({ url: '/auth/me', method: 'get' }),
 
+  logout: () => request<void>({ url: '/auth/logout', method: 'post' }),
+
   overview: (spaceId?: string | null) =>
     request<Overview>({
       url: '/dashboard/overview',

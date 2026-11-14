@@ -15,6 +15,7 @@ import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
+import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +35,8 @@ class AuthServiceTest {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
         authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService(),
-                mock(AuditLogService.class), new SimpleMeterRegistry());
+                mock(AuditLogService.class), mock(TokenSessionValidator.class),
+                new SimpleMeterRegistry());
 
         user = new SysUser();
         user.setId(1L);
@@ -122,6 +124,18 @@ class AuthServiceTest {
 
         assertFalse(response.getAccessToken().isBlank());
         assertEquals("admin", response.getUser().getUsername());
+    }
+
+    @Test
+    void refresh_afterTokenVersionBump_throws401() {
+        JwtService jwtService = new JwtService(SECRET, 7200, 604800);
+        user.setTokenVersion(0);
+        RefreshRequest request = new RefreshRequest();
+        request.setRefreshToken(jwtService.issueRefresh(user));
+        user.setTokenVersion(1);
+
+        BizException exception = assertThrows(BizException.class, () -> authService.refresh(request));
+        assertEquals(401, exception.getCode());
     }
 
     @Test

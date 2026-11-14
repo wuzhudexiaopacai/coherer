@@ -52,7 +52,13 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(USER_KEY, JSON.stringify(info))
   }
 
-  function logout() {
+  async function logout() {
+    try {
+      // 通知服务端提升 token 版本，旧 refresh token 一并失效
+      await api.logout()
+    } catch {
+      // 网络异常也要完成本地登出
+    }
     clearTokens()
     accessToken.value = null
     user.value = null
