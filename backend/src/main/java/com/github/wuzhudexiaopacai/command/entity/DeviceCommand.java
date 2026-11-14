@@ -26,6 +26,9 @@ public class DeviceCommand {
 
     private String requestId;
 
+    /** 客户端幂等键（可选） */
+    private String clientRequestId;
+
     @TableField(typeHandler = JacksonTypeHandler.class)
     private Map<String, Object> params;
 

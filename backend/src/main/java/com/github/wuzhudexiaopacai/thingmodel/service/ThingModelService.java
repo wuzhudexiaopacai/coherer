@@ -33,6 +33,10 @@ public class ThingModelService extends ServiceImpl<ThingModelMapper, ThingModel>
             .expireAfterWrite(Duration.ofSeconds(60))
             .maximumSize(2_000)
             .build();
+    private final Cache<Long, List<ThingModel>> serviceCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(2_000)
+            .build();
 
     @Transactional(rollbackFor = Exception.class)
     public List<ThingModelVO> save(Long productId, ThingModelSaveRequest request) {
@@ -69,6 +73,7 @@ public class ThingModelService extends ServiceImpl<ThingModelMapper, ThingModel>
         }
         saveBatch(entities);
         propertyCache.invalidate(productId);
+        serviceCache.invalidate(productId);
         return list(productId);
     }
 
@@ -87,6 +92,13 @@ public class ThingModelService extends ServiceImpl<ThingModelMapper, ThingModel>
         return propertyCache.get(productId, id -> list(Wrappers.<ThingModel>lambdaQuery()
                 .eq(ThingModel::getProductId, id)
                 .eq(ThingModel::getType, "PROPERTY")));
+    }
+
+    /** 命令下发校验：仅服务定义，带本地缓存。 */
+    public List<ThingModel> servicesCached(Long productId) {
+        return serviceCache.get(productId, id -> list(Wrappers.<ThingModel>lambdaQuery()
+                .eq(ThingModel::getProductId, id)
+                .eq(ThingModel::getType, "SERVICE")));
     }
 
     private ThingModelVO toVO(ThingModel model) {
