@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.dto.SpaceRequest;
 import com.github.wuzhudexiaopacai.space.dto.SpaceUpdateRequest;
 import com.github.wuzhudexiaopacai.space.entity.Space;
@@ -33,9 +34,18 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
     private final DeviceMapper deviceMapper;
 
     public List<SpaceNodeVO> tree() {
+        return tree(null);
+    }
+
+    /** 按数据范围返回空间树：受限用户只能看到自己空间及其子空间。 */
+    public List<SpaceNodeVO> tree(DataScope scope) {
         List<Space> all = list(Wrappers.<Space>lambdaQuery()
                 .orderByAsc(Space::getSort)
                 .orderByAsc(Space::getId));
+        if (scope != null && !scope.unrestricted()) {
+            Set<Long> allowed = new HashSet<>(scope.spaceIds());
+            all = all.stream().filter(space -> allowed.contains(space.getId())).toList();
+        }
         return buildTree(all);
     }
 
@@ -142,8 +152,12 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
 
     /** 空间（含子空间）下所有设备的业务 deviceId。 */
     public List<String> deviceIdsInSpace(Long spaceId) {
-        List<Long> spaceIds = descendantIds(spaceId);
-        if (spaceIds.isEmpty()) {
+        return deviceIdsInSpaces(descendantIds(spaceId));
+    }
+
+    /** 给定空间集合下所有设备的业务 deviceId；null/空集合返回空列表。 */
+    public List<String> deviceIdsInSpaces(List<Long> spaceIds) {
+        if (spaceIds == null || spaceIds.isEmpty()) {
             return List.of();
         }
         return deviceMapper.selectList(Wrappers.<Device>lambdaQuery()

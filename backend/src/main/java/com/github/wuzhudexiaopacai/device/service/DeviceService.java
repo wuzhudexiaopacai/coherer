@@ -13,6 +13,7 @@ import com.github.wuzhudexiaopacai.device.vo.DeviceRegisterResult;
 import com.github.wuzhudexiaopacai.device.vo.DeviceVO;
 import com.github.wuzhudexiaopacai.product.entity.Product;
 import com.github.wuzhudexiaopacai.product.mapper.ProductMapper;
+import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
@@ -34,7 +35,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     private final SpaceService spaceService;
 
     @Transactional(rollbackFor = Exception.class)
-    public List<DeviceRegisterResult> register(DeviceRegisterRequest request) {
+    public List<DeviceRegisterResult> register(DeviceRegisterRequest request, DataScope scope) {
         Product product = productMapper.selectById(request.getProductId());
         if (product == null) {
             throw new BizException(404, "产品不存在");
@@ -47,9 +48,16 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         String prefix = StringUtils.hasText(request.getNamePrefix())
                 ? request.getNamePrefix()
                 : product.getProductKey();
+        // 受限用户未指定空间时落到自己的根空间；指定越界空间直接 403
         Long spaceId = request.getSpaceId() == null
-                ? SpaceService.DEFAULT_SPACE_ID
+                ? (scope.unrestricted() ? SpaceService.DEFAULT_SPACE_ID : scope.rootSpaceId())
                 : request.getSpaceId();
+        if (spaceId == null) {
+            throw new BizException(403, "当前用户未分配数据空间，无法注册设备");
+        }
+        if (!scope.allows(spaceId)) {
+            throw new BizException(403, "无权在该空间注册设备");
+        }
         if (!spaceService.exists(spaceId)) {
             throw new BizException(404, "空间不存在");
         }
@@ -78,9 +86,11 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         return results;
     }
 
+    /**
+     * @param spaceIds 已由服务端解析的空间范围；null 表示不限制（仅全平台用户）
+     */
     public PageResult<DeviceVO> page(long current, long size, Long productId,
-                                     String status, String keyword, Long spaceId) {
-        List<Long> spaceIds = spaceId == null ? null : spaceService.descendantIds(spaceId);
+                                     String status, String keyword, List<Long> spaceIds) {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return new PageResult<>(0, current, size, List.of());
         }
@@ -97,10 +107,13 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         return PageResult.of(page.convert(this::toVO));
     }
 
-    public DeviceVO get(Long id) {
+    public DeviceVO get(Long id, DataScope scope) {
         Device device = getById(id);
         if (device == null) {
             throw new BizException(404, "设备不存在");
+        }
+        if (!scope.allows(device.getSpaceId())) {
+            throw new BizException(403, "无权访问该设备");
         }
         return toVO(device);
     }

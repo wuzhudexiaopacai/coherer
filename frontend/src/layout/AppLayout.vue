@@ -13,12 +13,18 @@ const spaceStore = useSpaceStore()
 const menuOpen = ref(false)
 let unsubscribeRealtime: (() => void) | undefined
 
-onMounted(() => {
+onMounted(async () => {
+  // 服务端数据范围可能已调整：同步最新用户信息后再决定订阅与空间树
+  try {
+    await auth.refreshUser()
+  } catch {
+    // 刷新失败不阻塞页面，后续接口会按 401 统一跳转登录
+  }
   // 全平台角色才做全局通配符订阅；空间受限用户的通配符会被 ACL 拒绝
   if (auth.user?.spaceId == null) {
     unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
   }
-  void spaceStore.ensureLoaded()
+  void spaceStore.ensureLoaded(true)
 })
 
 onBeforeUnmount(() => unsubscribeRealtime?.())
@@ -35,10 +41,13 @@ const spaceValue = computed({
   set: (value: string) => spaceStore.setCurrent(value === '__all__' ? null : value)
 })
 
-const spaceOptions = computed(() => [
-  { id: '__all__', label: '全部空间', depth: 0 },
-  ...spaceStore.flat.map((item) => ({ id: item.id, label: item.name, depth: item.depth }))
-])
+const spaceOptions = computed(() => {
+  const allLabel = auth.user?.spaceId == null ? '全部空间' : '全部可见空间'
+  return [
+    { id: '__all__', label: allLabel, depth: 0 },
+    ...spaceStore.flat.map((item) => ({ id: item.id, label: item.name, depth: item.depth }))
+  ]
+})
 
 const title = computed(() => (route.meta.title as string) ?? 'Coherer')
 const subtitle = computed(() => (route.meta.subtitle as string) ?? '')

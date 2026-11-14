@@ -35,6 +35,10 @@ export const useSpaceStore = defineStore('spaces', () => {
     try {
       tree.value = await api.spaceTree()
       loaded = true
+      // 数据范围可能变化：当前选中空间已不可见时回退到「全部可见空间」
+      if (currentSpaceId.value && !flat.value.some((item) => item.id === currentSpaceId.value)) {
+        setCurrent(null)
+      }
     } finally {
       loading.value = false
     }

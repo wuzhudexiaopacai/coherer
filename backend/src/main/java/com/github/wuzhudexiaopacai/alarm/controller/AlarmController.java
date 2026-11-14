@@ -6,6 +6,8 @@ import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.security.DataScope;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlarmController {
 
     private final AlarmRecordService alarmRecordService;
+    private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
     @GetMapping
@@ -33,19 +36,19 @@ public class AlarmController {
             @RequestParam(required = false) Long spaceId) {
         return ApiResponse.ok(alarmRecordService.page(
                 PageParams.current(current), PageParams.size(size, 100),
-                status, level, deviceId, spaceId));
+                status, level, deviceId, dataScopeService.resolveSpaceIds(spaceId)));
     }
 
     @PostMapping("/{id}/ack")
     public ApiResponse<Void> acknowledge(@PathVariable Long id) {
-        alarmRecordService.acknowledge(id);
+        alarmRecordService.acknowledge(id, dataScopeService.current());
         auditLogService.record("ALARM_ACK", "alarm", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
     }
 
     @PostMapping("/{id}/close")
     public ApiResponse<Void> close(@PathVariable Long id) {
-        alarmRecordService.close(id);
+        alarmRecordService.close(id, dataScopeService.current());
         auditLogService.record("ALARM_CLOSE", "alarm", Map.of("id", String.valueOf(id)));
         return ApiResponse.ok();
     }

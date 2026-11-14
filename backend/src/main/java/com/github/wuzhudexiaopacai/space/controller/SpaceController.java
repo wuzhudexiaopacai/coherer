@@ -2,6 +2,7 @@ package com.github.wuzhudexiaopacai.space.controller;
 
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import com.github.wuzhudexiaopacai.space.dto.SpaceRequest;
 import com.github.wuzhudexiaopacai.space.dto.SpaceUpdateRequest;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
@@ -25,11 +26,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class SpaceController {
 
     private final SpaceService spaceService;
+    private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
     @GetMapping("/tree")
     public ApiResponse<List<SpaceNodeVO>> tree() {
-        return ApiResponse.ok(spaceService.tree());
+        return ApiResponse.ok(spaceService.tree(dataScopeService.current()));
     }
 
     @PostMapping

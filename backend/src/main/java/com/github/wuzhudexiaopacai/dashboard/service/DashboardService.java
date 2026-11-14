@@ -43,12 +43,14 @@ public class DashboardService {
         this.tdJdbc = tdJdbc;
     }
 
-    public OverviewVO overview(Long spaceId) {
-        List<Long> spaceIds = spaceId == null ? null : spaceService.descendantIds(spaceId);
+    /**
+     * @param spaceIds 服务端解析后的空间范围；null 表示不限制
+     */
+    public OverviewVO overview(List<Long> spaceIds) {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return new OverviewVO(0, 0, 0, 0, 0, 0, 0, 0);
         }
-        List<String> deviceIds = spaceId == null ? null : spaceService.deviceIdsInSpace(spaceId);
+        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
         long telemetryTotal = 0;
         long telemetryToday = 0;
         if (deviceIds == null || !deviceIds.isEmpty()) {
@@ -62,7 +64,7 @@ public class DashboardService {
                     + todayStart + (in.isEmpty() ? "" : " AND device_id IN (" + in + ")"), args);
         }
         return new OverviewVO(
-                productMapper.selectCount(null),
+                countVisibleProducts(spaceIds),
                 countDevices(spaceIds, null),
                 countDevices(spaceIds, "ONLINE"),
                 countDevices(spaceIds, "OFFLINE"),
@@ -72,10 +74,10 @@ public class DashboardService {
                 telemetryToday);
     }
 
-    public List<TrendPointVO> telemetryTrend(int hours, Long spaceId) {
+    public List<TrendPointVO> telemetryTrend(int hours, List<Long> spaceIds) {
         int window = Math.min(Math.max(hours, 1), 168);
         long since = System.currentTimeMillis() - window * 3_600_000L;
-        List<String> deviceIds = spaceId == null ? null : spaceService.deviceIdsInSpace(spaceId);
+        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
         if (deviceIds != null && deviceIds.isEmpty()) {
             return List.of();
         }
@@ -99,9 +101,30 @@ public class DashboardService {
         }
     }
 
-    public List<TelemetryVO> recentTelemetry(int limit, Long spaceId) {
-        List<String> deviceIds = spaceId == null ? null : spaceService.deviceIdsInSpace(spaceId);
+    public List<TelemetryVO> recentTelemetry(int limit, List<Long> spaceIds) {
+        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
         return telemetryTdStore.recentAll(limit, deviceIds);
+    }
+
+    /**
+     * 产品总数：受限用户只统计其空间内已有设备涉及的产品，避免暴露平台全量产品数量。
+     */
+    private long countVisibleProducts(List<Long> spaceIds) {
+        if (spaceIds == null) {
+            Long total = productMapper.selectCount(null);
+            return total == null ? 0 : total;
+        }
+        List<String> deviceIds = spaceService.deviceIdsInSpaces(spaceIds);
+        if (deviceIds.isEmpty()) {
+            return 0;
+        }
+        return deviceMapper.selectList(Wrappers.<Device>lambdaQuery()
+                        .select(Device::getProductId)
+                        .in(Device::getSpaceId, spaceIds))
+                .stream()
+                .map(Device::getProductId)
+                .distinct()
+                .count();
     }
 
     private long countDevices(List<Long> spaceIds, String status) {

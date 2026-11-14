@@ -45,6 +45,13 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(USER_KEY, JSON.stringify(response.user))
   }
 
+  /** 登录后以前缓存的空间可能已越界，按服务端最新用户信息校正。 */
+  async function refreshUser() {
+    const info = await api.me()
+    user.value = info
+    localStorage.setItem(USER_KEY, JSON.stringify(info))
+  }
+
   function logout() {
     clearTokens()
     accessToken.value = null
@@ -56,5 +63,15 @@ export const useAuthStore = defineStore('auth', () => {
     accessToken.value = getAccessToken()
   }
 
-  return { user, accessToken, isAuthenticated, canWrite, roleLabel, login, logout, syncToken }
+  return {
+    user,
+    accessToken,
+    isAuthenticated,
+    canWrite,
+    roleLabel,
+    login,
+    logout,
+    refreshUser,
+    syncToken
+  }
 })

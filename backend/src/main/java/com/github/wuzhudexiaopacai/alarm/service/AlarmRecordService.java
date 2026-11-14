@@ -14,6 +14,7 @@ import com.github.wuzhudexiaopacai.alarm.vo.AlarmRecordVO;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import com.github.wuzhudexiaopacai.device.entity.Device;
+import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
@@ -99,11 +100,14 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         return leaf;
     }
 
+    /**
+     * @param spaceIds 服务端解析后的空间范围；null 表示不限制
+     */
     public PageResult<AlarmRecordVO> page(long current, long size, String status,
-                                          String level, String deviceId, Long spaceId) {
-        List<String> spaceDeviceIds = spaceId == null
+                                          String level, String deviceId, List<Long> spaceIds) {
+        List<String> spaceDeviceIds = spaceIds == null
                 ? null
-                : spaceService.deviceIdsInSpace(spaceId);
+                : spaceService.deviceIdsInSpaces(spaceIds);
         if (spaceDeviceIds != null && spaceDeviceIds.isEmpty()) {
             return new PageResult<>(0, current, size, List.of());
         }
@@ -138,8 +142,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void acknowledge(Long id) {
-        AlarmRecord record = requireRecord(id);
+    public void acknowledge(Long id, DataScope scope) {
+        AlarmRecord record = requireRecord(id, scope);
         if (!"TRIGGERED".equals(record.getStatus())) {
             throw new BizException(409, "仅触发状态的告警可确认");
         }
@@ -150,8 +154,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public void close(Long id) {
-        AlarmRecord record = requireRecord(id);
+    public void close(Long id, DataScope scope) {
+        AlarmRecord record = requireRecord(id, scope);
         if ("CLOSED".equals(record.getStatus()) || "RECOVERED".equals(record.getStatus())) {
             throw new BizException(409, "告警已结束，无需关闭");
         }
@@ -198,10 +202,16 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         }
     }
 
-    private AlarmRecord requireRecord(Long id) {
+    private AlarmRecord requireRecord(Long id, DataScope scope) {
         AlarmRecord record = getById(id);
         if (record == null) {
             throw new BizException(404, "告警记录不存在");
+        }
+        if (scope != null && !scope.unrestricted()) {
+            List<String> allowedDevices = spaceService.deviceIdsInSpaces(scope.spaceIds());
+            if (!allowedDevices.contains(record.getDeviceId())) {
+                throw new BizException(403, "无权操作该告警");
+            }
         }
         return record;
     }

@@ -1,6 +1,7 @@
 package com.github.wuzhudexiaopacai.telemetry.controller;
 
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.security.DeviceAccessService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
 import java.util.List;
@@ -17,12 +18,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class TelemetryController {
 
     private final TelemetryService telemetryService;
+    private final DeviceAccessService deviceAccessService;
 
     /** 最近遥测（M2 提供按时间范围 + 聚合查询）。 */
     @GetMapping
     public ApiResponse<List<TelemetryVO>> recent(
             @PathVariable String deviceId,
             @RequestParam(defaultValue = "20") int limit) {
+        deviceAccessService.require(deviceId);
         int size = Math.min(Math.max(limit, 1), 200);
         return ApiResponse.ok(telemetryService.recent(deviceId, size));
     }

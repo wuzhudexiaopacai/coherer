@@ -74,7 +74,8 @@ const registerDialog = reactive({
 
 function openRegister() {
   registerDialog.productId = productStore.products[0]?.id ?? null
-  registerDialog.spaceId = spaceStore.currentSpaceId ?? '1'
+  // 受限用户默认落到自己的根空间（空间树只返回可见范围）
+  registerDialog.spaceId = spaceStore.currentSpaceId ?? spaceStore.flat[0]?.id ?? null
   registerDialog.count = 2
   registerDialog.prefix = 'demo'
   registerDialog.results = []

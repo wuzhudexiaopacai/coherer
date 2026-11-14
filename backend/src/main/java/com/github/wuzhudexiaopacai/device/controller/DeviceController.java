@@ -8,6 +8,8 @@ import com.github.wuzhudexiaopacai.device.dto.DeviceRegisterRequest;
 import com.github.wuzhudexiaopacai.device.service.DeviceService;
 import com.github.wuzhudexiaopacai.device.vo.DeviceRegisterResult;
 import com.github.wuzhudexiaopacai.device.vo.DeviceVO;
+import com.github.wuzhudexiaopacai.security.DataScope;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
@@ -26,12 +28,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
     @PostMapping
     public ApiResponse<List<DeviceRegisterResult>> register(
             @Valid @RequestBody DeviceRegisterRequest request) {
-        List<DeviceRegisterResult> results = deviceService.register(request);
+        List<DeviceRegisterResult> results = deviceService.register(request,
+                dataScopeService.current());
         auditLogService.record("DEVICE_REGISTER", "device", Map.of(
                 "productId", String.valueOf(request.getProductId()),
                 "count", results.size()));
@@ -48,11 +52,12 @@ public class DeviceController {
             @RequestParam(required = false) String keyword) {
         return ApiResponse.ok(deviceService.page(
                 PageParams.current(current), PageParams.size(size, 100),
-                productId, status, keyword, spaceId));
+                productId, status, keyword, dataScopeService.resolveSpaceIds(spaceId)));
     }
 
     @GetMapping("/{id}")
     public ApiResponse<DeviceVO> get(@PathVariable Long id) {
-        return ApiResponse.ok(deviceService.get(id));
+        DataScope scope = dataScopeService.current();
+        return ApiResponse.ok(deviceService.get(id, scope));
     }
 }
