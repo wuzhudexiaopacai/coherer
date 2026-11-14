@@ -276,7 +276,13 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **修复**：统一判断 key 的**值是否为 `online`**，只有 online 才续期；离线标记只作展示，不参与存活判断。  
 **验证**：手动删除在线 key 后，主机巡检在下一轮把 ONLINE 置为 OFFLINE，并级联子设备离线。
 
-### 9.3 主机不能只绑定不接受 ACL 校验
+### 9.3 主机代理子设备数据必须再校验绑定关系
+
+**风险**：ACL 只限制主机主题前缀，主机仍可能替“未绑定”的设备上报数据。  
+**修复**：进入遥测/事件/影子/状态处理前，校验 `device.host_id == host.id` 且租户一致；越权计入 `coherer.mqtt.hosted_rejected`。  
+**验证**：主机替未绑定设备发遥测被拒，替已绑定设备发遥测/事件正常入库。
+
+### 9.4 主机不能只绑定不接受 ACL 校验
 
 **做法**：主机 clientId 以 `host_` 开头，认证查 `iot_host`；ACL 仅允许 `{tenant}/{hostId}/host/#` 与 `{tenant}/{hostId}/sub/#`。  
 **验证**：主机可订阅子设备命令、发布回执；跨主机前缀被拒绝。

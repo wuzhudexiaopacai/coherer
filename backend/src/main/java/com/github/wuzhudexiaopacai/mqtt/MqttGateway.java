@@ -5,6 +5,7 @@ import com.github.wuzhudexiaopacai.command.service.CommandPublisher;
 import com.github.wuzhudexiaopacai.command.service.CommandReplyService;
 import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
 import com.github.wuzhudexiaopacai.event.service.EventService;
+import com.github.wuzhudexiaopacai.host.service.HostDeviceAccessService;
 import com.github.wuzhudexiaopacai.host.service.HostStatusService;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
@@ -53,6 +54,14 @@ public class MqttGateway implements CommandPublisher {
     private static final String HOST_STATUS_TOPIC = "$share/coherer/+/+/host/status";
     private static final String HOST_COMMAND_REPLY_TOPIC =
             "$share/coherer/+/+/sub/+/thing/service/reply";
+    private static final String HOST_TELEMETRY_TOPIC =
+            "$share/coherer/+/+/sub/+/thing/property/report";
+    private static final String HOST_EVENT_TOPIC =
+            "$share/coherer/+/+/sub/+/thing/event/+/post";
+    private static final String HOST_SHADOW_TOPIC =
+            "$share/coherer/+/+/sub/+/shadow/report";
+    private static final String HOST_DEVICE_STATUS_TOPIC =
+            "$share/coherer/+/+/sub/+/status";
 
     private final TelemetryService telemetryService;
     private final ShadowService shadowService;
@@ -60,6 +69,7 @@ public class MqttGateway implements CommandPublisher {
     private final CommandReplyService commandReplyService;
     private final EventService eventService;
     private final HostStatusService hostStatusService;
+    private final HostDeviceAccessService hostDeviceAccessService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -196,9 +206,10 @@ public class MqttGateway implements CommandPublisher {
             client.subscribe(
                     new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC,
                             COMMAND_REPLY_TOPIC, EVENT_TOPIC, HOST_STATUS_TOPIC,
-                            HOST_COMMAND_REPLY_TOPIC},
-                    new int[]{1, 1, 1, 1, 1, 1, 1});
-            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执 / 事件 / 主机状态 / 主机命令回执");
+                            HOST_COMMAND_REPLY_TOPIC, HOST_TELEMETRY_TOPIC,
+                            HOST_EVENT_TOPIC, HOST_SHADOW_TOPIC, HOST_DEVICE_STATUS_TOPIC},
+                    new int[]{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+            log.info("已共享订阅：直连遥测/影子/状态/回执/事件 + 主机状态/回执/子设备遥测/事件/影子/状态");
         } catch (MqttException e) {
             log.error("共享订阅失败: {}", e.getMessage());
         }
@@ -250,7 +261,14 @@ public class MqttGateway implements CommandPublisher {
         // MQTT 入口不起新 trace 会与上游断链；每条消息独立 span 便于按 traceId 追踪
         Observation.createNotStarted("mqtt.message", observationRegistry)
                 .lowCardinalityKeyValue("kind", kind)
-                .observe(() -> handle(kind, levels[0], levels[1], topic, payload));
+                .observe(() -> {
+                    if (kind.startsWith("host-") && !"host-status".equals(kind)
+                            && !"host-command-reply".equals(kind)) {
+                        handleHosted(kind, levels[0], levels[1], levels[3], topic, payload);
+                    } else {
+                        handle(kind, levels[0], levels[1], topic, payload);
+                    }
+                });
     }
 
     private String topicKind(String[] levels) {
@@ -281,7 +299,59 @@ public class MqttGateway implements CommandPublisher {
                 && "reply".equals(levels[6])) {
             return "host-command-reply";
         }
+        if (levels.length == 7 && "sub".equals(levels[2])
+                && "thing".equals(levels[4]) && "property".equals(levels[5])
+                && "report".equals(levels[6])) {
+            return "host-telemetry";
+        }
+        if (levels.length == 8 && "sub".equals(levels[2])
+                && "thing".equals(levels[4]) && "event".equals(levels[5])
+                && "post".equals(levels[7])) {
+            return "host-event";
+        }
+        if (levels.length == 6 && "sub".equals(levels[2])
+                && "shadow".equals(levels[4]) && "report".equals(levels[5])) {
+            return "host-shadow";
+        }
+        if (levels.length == 5 && "sub".equals(levels[2])
+                && "status".equals(levels[4])) {
+            return "host-device-status";
+        }
         return null;
+    }
+
+    private void handleHosted(String kind, String tenantId, String hostId, String deviceId,
+                              String topic, byte[] payload) {
+        if (!hostDeviceAccessService.isBound(hostId, tenantId, deviceId)) {
+            meterRegistry.counter("coherer.mqtt.hosted_rejected").increment();
+            log.warn("主机越权上报子设备数据 hostId={} deviceId={} topic={}",
+                    hostId, deviceId, topic);
+            return;
+        }
+        try {
+            hostStatusService.heartbeat(hostId);
+            switch (kind) {
+                case "host-telemetry" -> {
+                    telemetryService.ingest(tenantId, deviceId, payload);
+                    deviceStatusService.heartbeat(deviceId);
+                }
+                case "host-shadow" -> {
+                    shadowService.onReported(tenantId, deviceId, payload);
+                    deviceStatusService.heartbeat(deviceId);
+                }
+                case "host-device-status" -> deviceStatusService.onStatus(tenantId, deviceId,
+                        new String(payload, StandardCharsets.UTF_8));
+                case "host-event" -> {
+                    String[] levels = topic.split("/");
+                    eventService.ingest(tenantId, deviceId, levels[6], payload);
+                    deviceStatusService.heartbeat(deviceId);
+                }
+                default -> {
+                }
+            }
+        } catch (Exception e) {
+            log.warn("主机子设备数据处理失败 topic={} err={}", topic, e.getMessage());
+        }
     }
 
     private void handle(String kind, String tenantId, String deviceId, String topic, byte[] payload) {

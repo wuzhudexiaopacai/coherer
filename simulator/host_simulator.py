@@ -19,6 +19,10 @@ def main() -> None:
     parser.add_argument("--credentials", required=True,
                         help="主机凭证 JSON：{hostId, hostSecret, tenant}")
     parser.add_argument("--ca-file", default=str(DEFAULT_CA))
+    parser.add_argument("--child-device", action="append", default=[],
+                        help="代理上报的子设备 deviceId，可重复")
+    parser.add_argument("--child-interval", type=float, default=10.0,
+                        help="子设备遥测上报间隔秒")
     parser.add_argument("--insecure", action="store_true")
     args = parser.parse_args()
 
@@ -54,6 +58,8 @@ def main() -> None:
         print(f"[{host_id}] 已连接，订阅 {command_filter}")
         c.publish(status_topic, "online", qos=1)
         c.subscribe(command_filter, qos=1)
+        for child in args.child_device:
+            c.publish(f"{tenant}/{host_id}/sub/{child}/status", "online", qos=1)
 
     def on_message(c, userdata, message):
         levels = message.topic.split("/")
@@ -90,14 +96,29 @@ def main() -> None:
     client.connect(args.host, args.port, keepalive=30)
     client.loop_start()
     last_heartbeat = 0.0
+    last_child_report = 0.0
+    child_seq = 0
     try:
         while True:
             now = time.time()
             # 心跳：每 60 秒续期一次在线 TTL，避免只靠 LWT
             if now - last_heartbeat >= 60:
-                c = client
-                c.publish(status_topic, "online", qos=1)
+                client.publish(status_topic, "online", qos=1)
                 last_heartbeat = now
+            # 代理子设备遥测：主机代为上报，验证 sub 数据链路
+            if args.child_device and now - last_child_report >= args.child_interval:
+                child_seq += 1
+                for child in args.child_device:
+                    payload = {
+                        "id": f"host-{child}-{child_seq}",
+                        "ts": int(time.time() * 1000),
+                        "params": {"temperature": 24.5, "humidity": 50.0},
+                    }
+                    client.publish(
+                        f"{tenant}/{host_id}/sub/{child}/thing/property/report",
+                        json.dumps(payload), qos=1)
+                    print(f"[{host_id}] 代理遥测 {child} seq={child_seq}")
+                last_child_report = now
             time.sleep(1)
             # 时间戳签名 5 分钟有效，定期刷新以便断线重连
             username = str(int(time.time() * 1000))
@@ -110,6 +131,8 @@ def main() -> None:
     finally:
         try:
             client.publish(status_topic, "offline", qos=1)
+            for child in args.child_device:
+                client.publish(f"{tenant}/{host_id}/sub/{child}/status", "offline", qos=1)
             time.sleep(0.2)
         except Exception:
             pass
