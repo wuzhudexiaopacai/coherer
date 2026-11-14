@@ -37,7 +37,7 @@ public class TelemetryBatchWriter {
     }
 
     /** 一条待写入的遥测。 */
-    public record Row(String tenantId, String deviceId, Long productId,
+    public record Row(String tenantId, String deviceId, Long productId, Long spaceId,
                       long tsMillis, Map<String, Object> params) {
     }
 
@@ -68,11 +68,12 @@ public class TelemetryBatchWriter {
         Row first = rows.get(0);
         StringBuilder sql = new StringBuilder("INSERT INTO coherer.")
                 .append(subTable(first.deviceId()))
-                .append(" USING coherer.stb_telemetry TAGS (?, ?, ?) (ts, payload) VALUES ");
-        List<Object> args = new ArrayList<>(3 + rows.size() * 2);
+                .append(" USING coherer.stb_telemetry TAGS (?, ?, ?, ?) (ts, payload) VALUES ");
+        List<Object> args = new ArrayList<>(4 + rows.size() * 2);
         args.add(first.deviceId());
         args.add(first.tenantId());
         args.add(first.productId());
+        args.add(first.spaceId());
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             if (i > 0) {
@@ -102,8 +103,8 @@ public class TelemetryBatchWriter {
     public boolean writeOne(Row row) {
         try {
             String sql = "INSERT INTO coherer." + subTable(row.deviceId())
-                    + " USING coherer.stb_telemetry TAGS (?, ?, ?) (ts, payload) VALUES (?, ?)";
-            jdbc.update(sql, row.deviceId(), row.tenantId(), row.productId(),
+                    + " USING coherer.stb_telemetry TAGS (?, ?, ?, ?) (ts, payload) VALUES (?, ?)";
+            jdbc.update(sql, row.deviceId(), row.tenantId(), row.productId(), row.spaceId(),
                     new Timestamp(row.tsMillis()), toPayload(row));
             return true;
         } catch (Exception e) {

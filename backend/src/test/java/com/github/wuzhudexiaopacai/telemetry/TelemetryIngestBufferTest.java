@@ -88,6 +88,6 @@ class TelemetryIngestBufferTest {
     }
 
     private TelemetryBatchWriter.Row row(String deviceId) {
-        return new TelemetryBatchWriter.Row("default", deviceId, 10L, 1L, Map.of("t", 1));
+        return new TelemetryBatchWriter.Row("default", deviceId, 10L, 1L, 1L, Map.of("t", 1));
     }
 }

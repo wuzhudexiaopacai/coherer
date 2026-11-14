@@ -73,18 +73,17 @@ public class DashboardService {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return new OverviewVO(0, 0, 0, 0, 0, 0, 0, 0);
         }
-        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
         long telemetryTotal = 0;
         long telemetryToday = 0;
-        if (deviceIds == null || !deviceIds.isEmpty()) {
-            Object[] args = deviceIds == null ? new Object[0] : deviceIds.toArray();
-            String in = inClause(deviceIds);
+        if (spaceIds == null || !spaceIds.isEmpty()) {
+            Object[] args = spaceIds == null ? new Object[0] : spaceIds.toArray();
+            String in = inClause(spaceIds);
             telemetryTotal = countTelemetry("SELECT COUNT(*) FROM coherer.stb_telemetry"
-                    + (in.isEmpty() ? "" : " WHERE device_id IN (" + in + ")"), args);
+                    + (in.isEmpty() ? "" : " WHERE space_id IN (" + in + ")"), args);
             long todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
                     .toInstant().toEpochMilli();
             telemetryToday = countTelemetry("SELECT COUNT(*) FROM coherer.stb_telemetry WHERE ts >= "
-                    + todayStart + (in.isEmpty() ? "" : " AND device_id IN (" + in + ")"), args);
+                    + todayStart + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")"), args);
         }
         return new OverviewVO(
                 countVisibleProducts(spaceIds),
@@ -100,24 +99,23 @@ public class DashboardService {
     public List<TrendPointVO> telemetryTrend(int hours, List<Long> spaceIds) {
         int window = Math.min(Math.max(hours, 1), 168);
         long since = System.currentTimeMillis() - window * 3_600_000L;
-        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
-        if (deviceIds != null && deviceIds.isEmpty()) {
+        if (spaceIds != null && spaceIds.isEmpty()) {
             return List.of();
         }
-        String in = inClause(deviceIds);
+        String in = inClause(spaceIds);
         String sql = "SELECT _wstart AS win_start, COUNT(*) AS cnt FROM coherer.stb_telemetry "
                 + "WHERE ts >= " + since
-                + (in.isEmpty() ? "" : " AND device_id IN (" + in + ")")
+                + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")")
                 + " INTERVAL(1h)";
         try {
-            if (deviceIds == null) {
+            if (spaceIds == null) {
                 return tdJdbc.query(sql, (rs, rowNum) -> new TrendPointVO(
                         rs.getTimestamp("win_start").toInstant().toString(),
                         rs.getLong("cnt")));
             }
             return tdJdbc.query(sql, (rs, rowNum) -> new TrendPointVO(
                     rs.getTimestamp("win_start").toInstant().toString(),
-                    rs.getLong("cnt")), deviceIds.toArray());
+                    rs.getLong("cnt")), spaceIds.toArray());
         } catch (Exception e) {
             log.warn("TDengine 趋势查询失败: {}", e.getMessage());
             return List.of();
@@ -125,8 +123,9 @@ public class DashboardService {
     }
 
     public List<TelemetryVO> recentTelemetry(int limit, List<Long> spaceIds) {
-        List<String> deviceIds = spaceIds == null ? null : spaceService.deviceIdsInSpaces(spaceIds);
-        return telemetryTdStore.recentAll(limit, deviceIds);
+        return spaceIds == null
+                ? telemetryTdStore.recentAll(limit)
+                : telemetryTdStore.recentBySpaces(limit, spaceIds);
     }
 
     /**
@@ -169,10 +168,10 @@ public class DashboardService {
         }
     }
 
-    private String inClause(List<String> deviceIds) {
-        if (deviceIds == null) {
+    private String inClause(List<?> values) {
+        if (values == null) {
             return "";
         }
-        return String.join(",", Collections.nCopies(deviceIds.size(), "?"));
+        return String.join(",", Collections.nCopies(values.size(), "?"));
     }
 }

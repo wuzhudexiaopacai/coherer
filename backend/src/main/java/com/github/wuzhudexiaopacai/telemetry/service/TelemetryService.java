@@ -35,6 +35,8 @@ import org.springframework.stereotype.Service;
 public class TelemetryService {
 
     private static final Logger log = LoggerFactory.getLogger(TelemetryService.class);
+    /** 与 TDengine payload NCHAR(2048) 对齐，留出安全余量。 */
+    private static final int MAX_PAYLOAD_CHARS = 2000;
 
     private final ObjectMapper objectMapper;
     private final DeviceLookupService deviceLookupService;
@@ -69,6 +71,10 @@ public class TelemetryService {
 
             List<ThingModel> properties = thingModelService.propertiesCached(device.getProductId());
             Map<String, Object> normalized = validate(properties, params);
+            if (objectMapper.writeValueAsString(normalized).length() > MAX_PAYLOAD_CHARS) {
+                throw new IllegalArgumentException(
+                        "遥测报文超过 " + MAX_PAYLOAD_CHARS + " 字符，可能被截断");
+            }
             long ts = root.path("ts").asLong(System.currentTimeMillis());
 
             String messageId = root.path("id").asText("");
@@ -80,7 +86,8 @@ public class TelemetryService {
             }
 
             TelemetryBatchWriter.Row row = new TelemetryBatchWriter.Row(
-                    tenantId, deviceId, device.getProductId(), ts, normalized);
+                    tenantId, deviceId, device.getProductId(), device.getSpaceId(),
+                    ts, normalized);
             // 优先入队批量写入；队列满时同步写入兜底（背压，不丢数据）
             if (!ingestBuffer.offer(row, dedupKey)) {
                 boolean written = batchWriter.writeOne(row);

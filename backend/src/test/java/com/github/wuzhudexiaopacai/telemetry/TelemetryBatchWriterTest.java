@@ -90,6 +90,6 @@ class TelemetryBatchWriterTest {
     }
 
     private TelemetryBatchWriter.Row row(String deviceId, long ts) {
-        return new TelemetryBatchWriter.Row("default", deviceId, 10L, ts, Map.of("t", 1));
+        return new TelemetryBatchWriter.Row("default", deviceId, 10L, 1L, ts, Map.of("t", 1));
     }
 }

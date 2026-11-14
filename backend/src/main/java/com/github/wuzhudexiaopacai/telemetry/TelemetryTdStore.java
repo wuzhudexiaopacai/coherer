@@ -55,6 +55,18 @@ public class TelemetryTdStore {
         return jdbc.query(sql, (rs, rowNum) -> mapRow(rs), deviceIds.toArray());
     }
 
+    /** 按空间（含子空间）最近遥测：直接走 space_id tag，避免按设备拼大 IN。 */
+    public List<TelemetryVO> recentBySpaces(int limit, List<Long> spaceIds) {
+        if (spaceIds == null || spaceIds.isEmpty()) {
+            return List.of();
+        }
+        String in = String.join(",",
+                java.util.Collections.nCopies(spaceIds.size(), "?"));
+        String sql = "SELECT ts, payload, device_id FROM coherer.stb_telemetry"
+                + " WHERE space_id IN (" + in + ") ORDER BY ts DESC LIMIT " + limit;
+        return jdbc.query(sql, (rs, rowNum) -> mapRow(rs), spaceIds.toArray());
+    }
+
     private TelemetryVO mapRow(ResultSet rs) throws SQLException {
         TelemetryVO vo = new TelemetryVO();
         vo.setDeviceId(rs.getString("device_id"));
