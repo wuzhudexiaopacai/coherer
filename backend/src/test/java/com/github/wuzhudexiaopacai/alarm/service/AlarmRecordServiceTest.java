@@ -29,6 +29,7 @@ class AlarmRecordServiceTest {
 
     private AlarmRuleService ruleService;
     private AlarmRecordMapper mapper;
+    private AlarmStateService stateService;
     private AlarmRecordService service;
     private Device device;
 
@@ -40,8 +41,14 @@ class AlarmRecordServiceTest {
 
         ruleService = mock(AlarmRuleService.class);
         mapper = mock(AlarmRecordMapper.class);
+        stateService = mock(AlarmStateService.class);
+        // 默认：无活动告警、认领成功、条件计时从当前开始
+        when(stateService.isActive(any(), any())).thenReturn(false);
+        when(stateService.claimActive(any(), any())).thenReturn(true);
+        when(stateService.conditionSince(any(), any(), org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> invocation.getArgument(2));
         service = new AlarmRecordService(ruleService, mock(SpaceService.class),
-                new SimpleMeterRegistry());
+                stateService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
 
         device = new Device();
@@ -88,11 +95,47 @@ class AlarmRecordServiceTest {
     @Test
     void evaluate_conditionRecovered_marksActiveAlarmsRecovered() {
         when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 100.0, 0)));
-        when(mapper.selectCount(any())).thenReturn(1L);
+        when(stateService.isActive(1L, "dev-0001")).thenReturn(true);
+        when(mapper.update(isNull(), any())).thenReturn(1);
 
         service.evaluate(device, Map.of("temperature", 35.0));
 
         verify(mapper).update(isNull(), any());
+        // 恢复后释放认领，允许条件再次成立时重新触发
+        verify(stateService).releaseActive(1L, "dev-0001");
+    }
+
+    @Test
+    void evaluate_redisAlreadyClaimed_doesNotInsert() {
+        // 另一个实例已认领（Redis 标记存在，但本实例数据库副本还没看到）
+        when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
+        when(stateService.isActive(1L, "dev-0001")).thenReturn(true);
+
+        service.evaluate(device, Map.of("temperature", 35.0));
+
+        verify(mapper, never()).insert(any(AlarmRecord.class));
+    }
+
+    @Test
+    void evaluate_claimFailed_doesNotInsert() {
+        // 多实例并发：本实例未抢到认领权
+        when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
+        when(stateService.claimActive(1L, "dev-0001")).thenReturn(false);
+
+        service.evaluate(device, Map.of("temperature", 35.0));
+
+        verify(mapper, never()).insert(any(AlarmRecord.class));
+    }
+
+    @Test
+    void evaluate_insertFails_releasesClaim() {
+        when(ruleService.enabledRules(10L)).thenReturn(List.of(rule("GT", 30.0, 0)));
+        when(mapper.insert(any(AlarmRecord.class))).thenThrow(new RuntimeException("db down"));
+
+        service.evaluate(device, Map.of("temperature", 35.0));
+
+        // 落库失败必须归还认领，否则该规则/设备永久无法再次告警
+        verify(stateService).releaseActive(1L, "dev-0001");
     }
 
     private AlarmRule rule(String operator, double threshold, int durationSeconds) {

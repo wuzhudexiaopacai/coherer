@@ -3,8 +3,6 @@ package com.github.wuzhudexiaopacai.alarm.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.alarm.AlarmCondition;
 import com.github.wuzhudexiaopacai.alarm.ConditionNode;
 import com.github.wuzhudexiaopacai.alarm.entity.AlarmRecord;
@@ -17,7 +15,6 @@ import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -31,8 +28,9 @@ import org.springframework.util.StringUtils;
 /**
  * 告警评估与告警记录生命周期。
  *
- * <p>持续时长语义：条件首次成立的时间记录在本地缓存，持续满足 N 秒后才触发；
- * 缓存为单实例内存态，重启后重新计时（M3 可迁移至 Redis）。</p>
+ * <p>持续时长与活动认领放在 Redis（{@link AlarmStateService}），因此多实例部署下
+ * 同一设备的消息无论落到哪个实例，计时与去重结果一致；数据库活动告警作为最终事实源，
+ * Redis 仅用于跨实例协调与降低查询压力。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -42,12 +40,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
 
     private final AlarmRuleService alarmRuleService;
     private final SpaceService spaceService;
+    private final AlarmStateService alarmStateService;
     private final MeterRegistry meterRegistry;
-
-    private final Cache<String, Long> conditionStart = Caffeine.newBuilder()
-            .expireAfterAccess(Duration.ofHours(1))
-            .maximumSize(100_000)
-            .build();
 
     /** 每条遥测校验入库后调用：评估该产品下所有启用规则。 */
     public void evaluate(Device device, Map<String, Object> params) {
@@ -57,21 +51,27 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
                 if (tree == null) {
                     continue;
                 }
-                String key = rule.getId() + ":" + device.getDeviceId();
-                boolean active = hasActive(rule.getId(), device.getDeviceId());
+                boolean active = alarmStateService.isActive(rule.getId(), device.getDeviceId())
+                        || hasActive(rule.getId(), device.getDeviceId());
 
                 if (AlarmCondition.evaluate(tree, params, false)) {
                     long now = System.currentTimeMillis();
-                    long since = conditionStart.get(key, ignored -> now);
+                    long since = alarmStateService.conditionSince(rule.getId(), device.getDeviceId(), now);
                     int duration = rule.getDurationSeconds() == null ? 0 : rule.getDurationSeconds();
                     if (duration > 0 && now - since < duration * 1000L) {
                         continue;
                     }
-                    if (!active) {
-                        trigger(rule, device, AlarmCondition.firstNumericValue(tree, params), tree);
+                    if (!active && alarmStateService.claimActive(rule.getId(), device.getDeviceId())) {
+                        try {
+                            trigger(rule, device, AlarmCondition.firstNumericValue(tree, params), tree);
+                        } catch (Exception e) {
+                            // 落库失败必须归还认领，否则该规则/设备会长时间无法再次告警
+                            alarmStateService.releaseActive(rule.getId(), device.getDeviceId());
+                            throw e;
+                        }
                     }
                 } else {
-                    conditionStart.invalidate(key);
+                    alarmStateService.clearCondition(rule.getId(), device.getDeviceId());
                     // 活动中的告警用恢复阈值（滞回）判断是否真正恢复
                     if (active && !AlarmCondition.evaluate(tree, params, true)) {
                         recoverIfActive(rule, device);
@@ -162,6 +162,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
         record.setStatus("CLOSED");
         record.setClosedAt(OffsetDateTime.now());
         updateById(record);
+        // 人工关闭同样释放认领，避免该规则/设备永久无法再触发
+        alarmStateService.releaseActive(record.getRuleId(), record.getDeviceId());
         log.info("告警已关闭 id={}", id);
     }
 
@@ -198,6 +200,8 @@ public class AlarmRecordService extends ServiceImpl<AlarmRecordMapper, AlarmReco
                 .set(AlarmRecord::getStatus, "RECOVERED")
                 .set(AlarmRecord::getRecoveredAt, OffsetDateTime.now()));
         if (updated > 0) {
+            // 恢复后释放认领，条件再次成立时可以重新触发
+            alarmStateService.releaseActive(rule.getId(), device.getDeviceId());
             log.info("告警恢复 rule={} deviceId={}", rule.getName(), device.getDeviceId());
         }
     }
