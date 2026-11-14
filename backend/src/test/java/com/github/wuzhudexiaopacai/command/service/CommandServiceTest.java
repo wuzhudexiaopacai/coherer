@@ -44,8 +44,12 @@ class CommandServiceTest {
         service = new CommandService(publisher, deviceLookupService, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         ReflectionTestUtils.setField(service, "replyTimeoutSeconds", 30L);
-        when(mapper.insert((DeviceCommand) any())).thenReturn(1);
-        when(mapper.updateById((DeviceCommand) any())).thenReturn(1);
+        when(mapper.insert((DeviceCommand) any())).thenAnswer(invocation -> {
+            // 模拟 MyBatis-Plus 雪花 ID 回填
+            ((DeviceCommand) invocation.getArgument(0)).setId(1L);
+            return 1;
+        });
+        when(mapper.update(any(), any())).thenReturn(1);
     }
 
     @Test
@@ -63,9 +67,8 @@ class CommandServiceTest {
         assertTrue(vo.getRequestId().length() >= 32);
         verify(publisher).publishCommand(eq("default"), eq("dev-1"), eq("setInterval"),
                 eq(vo.getRequestId()), eq(Map.of("seconds", 5)));
-        ArgumentCaptor<DeviceCommand> captor = ArgumentCaptor.forClass(DeviceCommand.class);
-        verify(mapper).updateById(captor.capture());
-        assertEquals("SENT", captor.getValue().getStatus());
+        // 条件更新 PENDING -> SENT，避免覆盖抢先到达的回执
+        verify(mapper).update(any(), any());
     }
 
     @Test
@@ -106,12 +109,32 @@ class CommandServiceTest {
     }
 
     @Test
-    void sweepTimeouts_updatesOnlySentCommands() {
-        when(mapper.update(any(), any())).thenReturn(2);
+    void send_replyArrivesBeforeStatusUpdate_keepsSuccess() {
+        when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device("ONLINE"));
+        when(publisher.publishCommand(anyString(), anyString(), anyString(), anyString(), any()))
+                .thenReturn(true);
+        // 回执先到：条件更新影响 0 行，随后以数据库最新状态为准
+        when(mapper.update(any(), any())).thenReturn(0);
+        DeviceCommand replied = new DeviceCommand();
+        replied.setId(1L);
+        replied.setStatus("SUCCESS");
+        when(mapper.selectById(1L)).thenReturn(replied);
+        CommandSendRequest request = new CommandSendRequest();
+        request.setIdentifier("reboot");
+
+        var vo = service.send("dev-1", request, "admin");
+
+        assertEquals("SUCCESS", vo.getStatus());
+    }
+
+    @Test
+    void sweepTimeouts_coversSentAndPending() {
+        when(mapper.update(any(), any())).thenReturn(2, 1);
 
         service.sweepTimeouts();
 
-        verify(mapper).update(any(), any());
+        // SENT 超时 + PENDING 卡死各一次条件更新
+        verify(mapper, org.mockito.Mockito.times(2)).update(any(), any());
     }
 
     private Device device(String status) {

@@ -64,21 +64,46 @@ public class CommandService extends ServiceImpl<DeviceCommandMapper, DeviceComma
         command.setParams(params);
         command.setStatus("PENDING");
         command.setOperator(operator);
+        command.setCreatedAt(OffsetDateTime.now());
         save(command);
 
         boolean published = commandPublisher.publishCommand(
                 device.getTenantId(), deviceId, request.getIdentifier(), requestId, params);
+        OffsetDateTime sentAt = OffsetDateTime.now();
         if (published) {
-            command.setStatus("SENT");
-            command.setSentAt(OffsetDateTime.now());
+            // 条件更新：设备回执可能先于本次更新到达，绝不能把 SUCCESS 覆盖回 SENT
+            int updated = baseMapper.update(null, Wrappers.<DeviceCommand>lambdaUpdate()
+                    .eq(DeviceCommand::getId, command.getId())
+                    .eq(DeviceCommand::getStatus, "PENDING")
+                    .set(DeviceCommand::getStatus, "SENT")
+                    .set(DeviceCommand::getSentAt, sentAt));
+            if (updated > 0) {
+                command.setStatus("SENT");
+                command.setSentAt(sentAt);
+            } else {
+                command = reload(command);
+            }
             meterRegistry.counter("coherer.command.dispatched").increment();
         } else {
-            command.setStatus("FAILED");
-            command.setError("MQTT 通道未连接，命令未下发");
+            int updated = baseMapper.update(null, Wrappers.<DeviceCommand>lambdaUpdate()
+                    .eq(DeviceCommand::getId, command.getId())
+                    .eq(DeviceCommand::getStatus, "PENDING")
+                    .set(DeviceCommand::getStatus, "FAILED")
+                    .set(DeviceCommand::getError, "MQTT 通道未连接，命令未下发"));
+            if (updated > 0) {
+                command.setStatus("FAILED");
+                command.setError("MQTT 通道未连接，命令未下发");
+            } else {
+                command = reload(command);
+            }
             meterRegistry.counter("coherer.command.dispatched", "result", "failed").increment();
         }
-        updateById(command);
         return toVO(command);
+    }
+
+    private DeviceCommand reload(DeviceCommand fallback) {
+        DeviceCommand latest = getById(fallback.getId());
+        return latest == null ? fallback : latest;
     }
 
     /** 最近命令，按创建时间倒序。 */
@@ -93,16 +118,24 @@ public class CommandService extends ServiceImpl<DeviceCommandMapper, DeviceComma
                 .toList();
     }
 
-    /** 超时未回执的命令置为 TIMEOUT，避免永久 SENT。 */
+    /** 超时未回执的命令置为 TIMEOUT，避免永久 SENT / PENDING。 */
     @Scheduled(fixedDelayString = "${coherer.command.timeout-sweep-interval-ms:15000}")
     public void sweepTimeouts() {
         OffsetDateTime deadline = OffsetDateTime.now().minusSeconds(replyTimeoutSeconds);
         try {
-            int updated = baseMapper.update(null, Wrappers.<DeviceCommand>lambdaUpdate()
+            // 正常下发后未回执
+            int sent = baseMapper.update(null, Wrappers.<DeviceCommand>lambdaUpdate()
                     .eq(DeviceCommand::getStatus, "SENT")
                     .lt(DeviceCommand::getSentAt, deadline)
                     .set(DeviceCommand::getStatus, "TIMEOUT")
                     .set(DeviceCommand::getError, "设备未在超时时间内回执"));
+            // 进程在保存后、发布前崩溃会留下 PENDING，同样需要兜底
+            int pending = baseMapper.update(null, Wrappers.<DeviceCommand>lambdaUpdate()
+                    .eq(DeviceCommand::getStatus, "PENDING")
+                    .lt(DeviceCommand::getCreatedAt, deadline)
+                    .set(DeviceCommand::getStatus, "TIMEOUT")
+                    .set(DeviceCommand::getError, "命令未成功下发（服务重启或发布失败）"));
+            int updated = sent + pending;
             if (updated > 0) {
                 meterRegistry.counter("coherer.command.timeout").increment(updated);
                 log.info("命令超时巡检：{} 条置为 TIMEOUT", updated);
