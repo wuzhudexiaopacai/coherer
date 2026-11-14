@@ -1,6 +1,8 @@
 package com.github.wuzhudexiaopacai.mqtt;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.wuzhudexiaopacai.command.service.CommandPublisher;
+import com.github.wuzhudexiaopacai.command.service.CommandReplyService;
 import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
@@ -37,17 +39,19 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class MqttGateway {
+public class MqttGateway implements CommandPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(MqttGateway.class);
 
     private static final String TELEMETRY_TOPIC = "$share/coherer/+/+/thing/property/report";
     private static final String SHADOW_REPORT_TOPIC = "$share/coherer/+/+/shadow/report";
     private static final String STATUS_TOPIC = "$share/coherer/+/+/status";
+    private static final String COMMAND_REPLY_TOPIC = "$share/coherer/+/+/thing/service/reply";
 
     private final TelemetryService telemetryService;
     private final ShadowService shadowService;
     private final DeviceStatusService deviceStatusService;
+    private final CommandReplyService commandReplyService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -182,11 +186,41 @@ public class MqttGateway {
     private void subscribe() {
         try {
             client.subscribe(
-                    new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC},
-                    new int[]{1, 1, 1});
-            log.info("已共享订阅：遥测 / 影子上报 / 设备状态");
+                    new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC,
+                            COMMAND_REPLY_TOPIC},
+                    new int[]{1, 1, 1, 1});
+            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执");
         } catch (MqttException e) {
             log.error("共享订阅失败: {}", e.getMessage());
+        }
+    }
+
+    /** 下发设备服务调用；返回 false 表示当前 MQTT 未连接。 */
+    @Override
+    public boolean publishCommand(String tenantId, String deviceId, String identifier,
+                                  String requestId, java.util.Map<String, Object> params) {
+        if (client == null || !client.isConnected()) {
+            log.warn("MQTT 未连接，命令未下发 deviceId={} identifier={}", deviceId, identifier);
+            return false;
+        }
+        try {
+            String topic = tenantId + "/" + deviceId + "/thing/service/" + identifier;
+            byte[] payload = objectMapper.writeValueAsBytes(java.util.Map.of(
+                    "id", requestId,
+                    "identifier", identifier,
+                    "params", params == null ? java.util.Map.of() : params,
+                    "ts", System.currentTimeMillis()));
+            MqttMessage message = new MqttMessage(payload);
+            message.setQos(1);
+            client.publish(topic, message);
+            meterRegistry.counter("coherer.command.sent").increment();
+            log.info("命令已下发 deviceId={} identifier={} requestId={}",
+                    deviceId, identifier, requestId);
+            return true;
+        } catch (Exception e) {
+            log.warn("命令下发失败 deviceId={} identifier={} err={}",
+                    deviceId, identifier, e.getMessage());
+            return false;
         }
     }
 
@@ -216,6 +250,10 @@ public class MqttGateway {
         if (levels.length == 3 && "status".equals(levels[2])) {
             return "status";
         }
+        if (levels.length == 5 && "thing".equals(levels[2])
+                && "service".equals(levels[3]) && "reply".equals(levels[4])) {
+            return "command-reply";
+        }
         return null;
     }
 
@@ -233,6 +271,7 @@ public class MqttGateway {
                 }
                 case "status" -> deviceStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));
+                case "command-reply" -> commandReplyService.onReply(tenantId, deviceId, payload);
                 default -> {
                 }
             }

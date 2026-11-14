@@ -182,3 +182,18 @@ export interface UserItem {
   status: 'ACTIVE' | 'DISABLED'
   createdAt?: string
 }
+
+export interface CommandRecord {
+  id: string
+  deviceId: string
+  identifier: string
+  requestId: string
+  params: Record<string, unknown>
+  status: 'PENDING' | 'SENT' | 'SUCCESS' | 'FAILED' | 'TIMEOUT'
+  result?: Record<string, unknown>
+  error?: string
+  operator?: string
+  createdAt: string
+  sentAt?: string
+  repliedAt?: string
+}

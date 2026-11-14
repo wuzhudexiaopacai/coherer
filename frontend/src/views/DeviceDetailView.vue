@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
-import type { Device, Shadow, Telemetry } from '../api/types'
+import type { CommandRecord, Device, Shadow, Telemetry, ThingModel } from '../api/types'
 import MultiSeriesChart from '../components/MultiSeriesChart.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
@@ -23,6 +23,8 @@ const deviceRouteId = String(route.params.id)
 const device = ref<Device | null>(null)
 const telemetry = ref<Telemetry[]>([])
 const shadow = ref<Shadow | null>(null)
+const commands = ref<CommandRecord[]>([])
+const services = ref<ThingModel[]>([])
 const loading = ref(true)
 const tab = ref('realtime')
 let timer: number | undefined
@@ -85,6 +87,81 @@ async function loadTelemetry() {
   }
 }
 
+const commandStatusLabels: Record<string, string> = {
+  PENDING: '待发送',
+  SENT: '已下发',
+  SUCCESS: '成功',
+  FAILED: '失败',
+  TIMEOUT: '超时'
+}
+
+const commandForm = reactive({
+  identifier: '',
+  params: '{\n  "seconds": 5\n}',
+  sending: false
+})
+
+async function loadCommands() {
+  if (!businessId.value) return
+  try {
+    commands.value = await api.listCommands(businessId.value, 20)
+  } catch {
+    commands.value = []
+  }
+}
+
+async function loadServices() {
+  if (!device.value) return
+  try {
+    const items = await api.thingModel(device.value.productId)
+    services.value = items.filter((item) => item.type === 'SERVICE')
+    if (!commandForm.identifier && services.value.length) {
+      commandForm.identifier = services.value[0].identifier
+    }
+  } catch {
+    services.value = []
+  }
+}
+
+async function sendCommand() {
+  if (!commandForm.identifier.trim()) {
+    ElMessage.warning('请选择或输入服务标识')
+    return
+  }
+  let params: Record<string, unknown> = {}
+  if (commandForm.params.trim()) {
+    try {
+      const parsed = JSON.parse(commandForm.params)
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('参数必须是 JSON 对象')
+      }
+      params = parsed as Record<string, unknown>
+    } catch (error) {
+      ElMessage.warning(`参数 JSON 不合法：${(error as Error).message}`)
+      return
+    }
+  }
+  commandForm.sending = true
+  try {
+    const result = await api.sendCommand(businessId.value, {
+      identifier: commandForm.identifier.trim(),
+      params
+    })
+    ElMessage.success(result.status === 'SENT' ? '命令已下发，等待设备回执' : '命令下发失败')
+    await loadCommands()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    commandForm.sending = false
+  }
+}
+
+function commandResult(row: CommandRecord): string {
+  if (row.error) return row.error
+  if (row.result && Object.keys(row.result).length) return JSON.stringify(row.result)
+  return '—'
+}
+
 async function loadShadow() {
   if (!businessId.value) return
   try {
@@ -118,7 +195,7 @@ onMounted(async () => {
   await Promise.all([productStore.ensureLoaded(), spaceStore.ensureLoaded()])
   await loadDevice()
   if (device.value) {
-    await Promise.all([loadTelemetry(), loadShadow()])
+    await Promise.all([loadTelemetry(), loadShadow(), loadCommands(), loadServices()])
     unsubscribeRealtime = subscribeRealtime(
       `default/${device.value.deviceId}/thing/property/report`,
       (_topic, payload) => handleRealtime(payload)
@@ -299,6 +376,86 @@ async function refreshAll() {
             {{ fmtDateTime(shadow?.updatedAt) }} ·
             设置期望值后，设备上线会自动同步并回传 reported。
           </p>
+        </el-tab-pane>
+
+        <el-tab-pane label="命令下发" name="command">
+          <div class="command-grid">
+            <div class="command-form">
+              <div class="chart-head">
+                <div>
+                  <h3>下发服务调用</h3>
+                  <p class="tiny">MQTT QoS1 · 回执按 requestId 关联，30 秒未回执自动超时</p>
+                </div>
+                <span class="chip accent">Service</span>
+              </div>
+              <label class="field">
+                <span class="field-label">服务</span>
+                <el-select
+                  v-model="commandForm.identifier"
+                  filterable
+                  allow-create
+                  default-first-option
+                  placeholder="选择物模型服务，或输入自定义标识"
+                >
+                  <el-option
+                    v-for="service in services"
+                    :key="service.identifier"
+                    :label="`${service.name} (${service.identifier})`"
+                    :value="service.identifier"
+                  />
+                </el-select>
+              </label>
+              <label class="field">
+                <span class="field-label">参数 JSON</span>
+                <el-input v-model="commandForm.params" type="textarea" :rows="5" class="mono" />
+              </label>
+              <el-button
+                v-if="auth.canWrite"
+                type="primary"
+                :loading="commandForm.sending"
+                @click="sendCommand"
+              >
+                下发命令
+              </el-button>
+              <p v-else class="tiny">只读账号不能下发命令</p>
+            </div>
+
+            <div class="command-history">
+              <div class="chart-head">
+                <div>
+                  <h3>最近命令</h3>
+                  <p class="tiny">PENDING → SENT → SUCCESS / FAILED / TIMEOUT</p>
+                </div>
+                <el-button text :icon="Refresh" @click="loadCommands">刷新</el-button>
+              </div>
+              <el-table :data="commands" size="small">
+                <el-table-column label="时间" width="150">
+                  <template #default="{ row }">
+                    <span class="tiny">{{ fmtDateTime(row.createdAt) }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="服务" min-width="120" prop="identifier" />
+                <el-table-column label="状态" width="90">
+                  <template #default="{ row }">
+                    <span class="chip" :class="{ accent: row.status === 'SUCCESS', danger: row.status === 'FAILED' || row.status === 'TIMEOUT' }">
+                      {{ commandStatusLabels[row.status] ?? row.status }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="结果" min-width="200">
+                  <template #default="{ row }">
+                    <span class="mono tiny command-result">{{ commandResult(row) }}</span>
+                  </template>
+                </el-table-column>
+                <template #empty>
+                  <div class="empty-state">
+                    <p>暂无命令</p>
+                    <span class="tiny">选择服务并下发后，回执会显示在这里</span>
+                  </div>
+                </template>
+              </el-table>
+            </div>
+          </div>
         </el-tab-pane>
 
         <el-tab-pane label="历史数据" name="history">
@@ -549,7 +706,57 @@ async function refreshAll() {
   align-items: center;
 }
 
+.command-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.4fr);
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.command-form,
+.command-history {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px 18px;
+}
+
+.command-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.command-form .field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.field-label {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.command-form :deep(.el-select) {
+  width: 100%;
+}
+
+.command-result {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.chip.danger {
+  background: rgba(255, 69, 58, 0.1);
+  color: #d70015;
+}
+
 @media (max-width: 900px) {
+  .command-grid {
+    grid-template-columns: 1fr;
+  }
+
   .shadow-grid {
     grid-template-columns: 1fr;
   }

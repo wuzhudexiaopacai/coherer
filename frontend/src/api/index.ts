@@ -18,7 +18,8 @@ import type {
   ThingModel,
   TrendPoint,
   UserInfo,
-  UserItem
+  UserItem,
+  CommandRecord
 } from './types'
 
 export const api = {
@@ -126,6 +127,16 @@ export const api = {
     request<void>({ url: `/users/${id}/reset-password`, method: 'post', data: { password } }),
 
   deleteUser: (id: string) => request<void>({ url: `/users/${id}`, method: 'delete' }),
+
+  sendCommand: (deviceId: string, body: { identifier: string; params?: Record<string, unknown> }) =>
+    request<CommandRecord>({ url: `/devices/${deviceId}/commands`, method: 'post', data: body }),
+
+  listCommands: (deviceId: string, limit = 20) =>
+    request<CommandRecord[]>({
+      url: `/devices/${deviceId}/commands`,
+      method: 'get',
+      params: { limit }
+    }),
 
   deviceTelemetry: (deviceId: string, limit = 60) =>
     request<Telemetry[]>({

@@ -57,6 +57,8 @@ class VirtualDevice(threading.Thread):
         self.shadow_topic = f"{tenant}/{device_id}/shadow/update"
         self.shadow_report_topic = f"{tenant}/{device_id}/shadow/report"
         self.status_topic = f"{tenant}/{device_id}/status"
+        self.service_topic = f"{tenant}/{device_id}/thing/service/+"
+        self.service_reply_topic = f"{tenant}/{device_id}/thing/service/reply"
         self.temperature = random.uniform(18, 30)
         self.humidity = random.uniform(40, 65)
         self.battery = random.uniform(70, 100)
@@ -189,10 +191,14 @@ class VirtualDevice(threading.Thread):
         print(f"[{self.device_id}] 已连接, 上报主题: {self.topic}")
         client.publish(self.status_topic, "online", qos=1)
         client.subscribe(self.shadow_topic, qos=1)
+        client.subscribe(self.service_topic, qos=1)
         # 上线即上报一次当前状态
         self._publish_shadow_report()
 
     def _on_message(self, client, userdata, message):
+        if "/thing/service/" in message.topic and not message.topic.endswith("/reply"):
+            self._handle_service_call(message)
+            return
         if message.topic != self.shadow_topic:
             return
         try:
@@ -204,6 +210,35 @@ class VirtualDevice(threading.Thread):
             self._publish_shadow_report(data.get("version"))
         except Exception as e:
             print(f"[{self.device_id}] 影子消息处理失败: {e}")
+
+    def _handle_service_call(self, message):
+        """服务调用：setInterval / reboot / echo，回执带 requestId。"""
+        try:
+            data = json.loads(message.payload.decode())
+        except Exception as e:
+            print(f"[{self.device_id}] 命令解析失败: {e}")
+            return
+        request_id = data.get("id")
+        identifier = data.get("identifier") or message.topic.rsplit("/", 1)[-1]
+        params = data.get("params") or {}
+        result = {"identifier": identifier, "deviceId": self.device_id}
+        code = 0
+        if identifier == "setInterval":
+            value = params.get("seconds", params.get("interval"))
+            if isinstance(value, (int, float)) and 1 <= float(value) <= 60:
+                self.interval = float(value)
+                result["interval"] = self.interval
+            else:
+                code = 400
+                result["error"] = "seconds 需在 1-60 之间"
+        elif identifier == "reboot":
+            result["status"] = "rebooting"
+        else:
+            result["echo"] = params
+        reply = {"id": request_id, "code": code, "result": result,
+                 "ts": int(time.time() * 1000)}
+        self.client.publish(self.service_reply_topic, json.dumps(reply), qos=1)
+        print(f"[{self.device_id}] 命令 {identifier} -> code={code}")
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         if not STOP.is_set():
