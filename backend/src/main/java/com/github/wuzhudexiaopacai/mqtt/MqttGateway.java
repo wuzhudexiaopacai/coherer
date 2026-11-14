@@ -222,8 +222,15 @@ public class MqttGateway {
     private void handle(String kind, String tenantId, String deviceId, String topic, byte[] payload) {
         try {
             switch (kind) {
-                case "telemetry" -> telemetryService.ingest(tenantId, deviceId, payload);
-                case "shadow" -> shadowService.onReported(tenantId, deviceId, payload);
+                case "telemetry" -> {
+                    // 任何遥测都说明设备在线，用于在线标记续期
+                    deviceStatusService.heartbeat(deviceId);
+                    telemetryService.ingest(tenantId, deviceId, payload);
+                }
+                case "shadow" -> {
+                    deviceStatusService.heartbeat(deviceId);
+                    shadowService.onReported(tenantId, deviceId, payload);
+                }
                 case "status" -> deviceStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));
                 default -> {

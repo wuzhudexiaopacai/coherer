@@ -18,6 +18,7 @@ spring:
       host: ${COHERER_REDIS_HOST:localhost}
       port: ${COHERER_REDIS_PORT:6379}
       password: ${COHERER_REDIS_PASSWORD}
+      timeout: 3s
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -61,6 +62,12 @@ logging:
     com.github.wuzhudexiaopacai.internal.auth: DEBUG
 
 coherer:
+  device:
+    # 设备在线标记 TTL：超过该时长没有任何消息即视为离线
+    online-ttl-seconds: ${COHERER_DEVICE_ONLINE_TTL_SECONDS:180}
+    # 在线状态巡检间隔与首次延迟
+    online-sweep-interval-ms: ${COHERER_DEVICE_ONLINE_SWEEP_INTERVAL_MS:60000}
+    online-sweep-initial-delay-ms: ${COHERER_DEVICE_ONLINE_SWEEP_INITIAL_DELAY_MS:30000}
   security:
     # AES-256-GCM 主密钥（Base64，32 字节），必须由环境变量注入
     secret-key: ${COHERER_SECRET_KEY}
