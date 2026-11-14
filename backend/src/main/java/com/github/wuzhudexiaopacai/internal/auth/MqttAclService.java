@@ -6,6 +6,8 @@ import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.time.Duration;
 import java.util.List;
@@ -34,6 +36,7 @@ public class MqttAclService {
     private static final Logger log = LoggerFactory.getLogger(MqttAclService.class);
 
     private final DeviceLookupService deviceLookupService;
+    private final HostLookupService hostLookupService;
     private final SysUserMapper userMapper;
     private final SpaceService spaceService;
 
@@ -67,6 +70,11 @@ public class MqttAclService {
             return authorizeWeb(username, topic, action);
         }
 
+        // 边缘主机：仅允许自身 tenant/hostId 下的 host/ 与 sub/ 主题
+        if (clientId.startsWith("host_")) {
+            return authorizeHost(clientId, topic);
+        }
+
         // 设备账号：仅限自身主题空间
         Device device = deviceLookupService.getByDeviceId(clientId);
         if (device == null) {
@@ -83,6 +91,22 @@ public class MqttAclService {
             log.debug("ACL 拒绝：设备越权 clientId={} topic={} action={}", clientId, topic, action);
         }
         return allowed;
+    }
+
+    private boolean authorizeHost(String hostId, String topic) {
+        IotHost host = hostLookupService.getByHostId(hostId);
+        if (host == null || "DISABLED".equals(host.getStatus())) {
+            return false;
+        }
+        String[] levels = topic.split("/");
+        if (levels.length < 3) {
+            return false;
+        }
+        String tenant = StringUtils.hasText(host.getTenantId()) ? host.getTenantId() : "default";
+        if (!tenant.equals(levels[0]) || !hostId.equals(levels[1])) {
+            return false;
+        }
+        return "host".equals(levels[2]) || "sub".equals(levels[2]);
     }
 
     private boolean authorizeWeb(String username, String topic, String action) {

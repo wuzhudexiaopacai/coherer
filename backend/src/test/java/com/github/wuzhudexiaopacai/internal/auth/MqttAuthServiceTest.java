@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.security.HmacSigner;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,7 +22,8 @@ class MqttAuthServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new MqttAuthService(mock(DeviceMapper.class), mock(SecretCipher.class));
+        service = new MqttAuthService(mock(DeviceMapper.class),
+                mock(HostLookupService.class), mock(SecretCipher.class));
         ReflectionTestUtils.setField(service, "ingestClientId", "coherer-ingest");
         ReflectionTestUtils.setField(service, "ingestUsername", "service");
         ReflectionTestUtils.setField(service, "ingestSecret", INGEST_SECRET);

@@ -23,6 +23,9 @@ public class Device {
     /** 设备归属空间 */
     private Long spaceId;
 
+    /** 所属边缘主机；NULL 表示 Wi-Fi/以太网设备直连 */
+    private Long hostId;
+
     /** 设备唯一标识（MQTT clientId） */
     private String deviceId;
 

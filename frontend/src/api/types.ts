@@ -23,6 +23,7 @@ export interface Device {
   id: string
   productId: string
   spaceId?: string
+  hostId?: string | null
   deviceId: string
   name: string
   status: DeviceStatus
@@ -219,4 +220,23 @@ export interface DeviceEvent {
   ts: string
   params: Record<string, unknown>
   createdAt: string
+}
+
+export interface Host {
+  id: string
+  hostId: string
+  name: string
+  spaceId: string
+  model?: string
+  firmwareVersion?: string
+  status: 'INACTIVE' | 'ONLINE' | 'OFFLINE' | 'DISABLED'
+  lastOnlineAt?: string
+  createdAt: string
+  childCount: number
+}
+
+export interface HostRegisterResult {
+  hostId: string
+  name: string
+  hostSecret: string
 }

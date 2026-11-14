@@ -19,6 +19,8 @@ import com.github.wuzhudexiaopacai.command.mapper.DeviceCommandMapper;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.thingmodel.entity.ThingModel;
 import com.github.wuzhudexiaopacai.thingmodel.service.ThingModelService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -37,6 +39,7 @@ class CommandServiceTest {
     private DeviceCommandMapper mapper;
     private CommandPublisher publisher;
     private DeviceLookupService deviceLookupService;
+    private HostLookupService hostLookupService;
     private ThingModelService thingModelService;
     private StringRedisTemplate redisTemplate;
     private ValueOperations<String, String> valueOperations;
@@ -49,14 +52,15 @@ class CommandServiceTest {
         mapper = mock(DeviceCommandMapper.class);
         publisher = mock(CommandPublisher.class);
         deviceLookupService = mock(DeviceLookupService.class);
+        hostLookupService = mock(HostLookupService.class);
         thingModelService = mock(ThingModelService.class);
         redisTemplate = mock(StringRedisTemplate.class);
         valueOperations = mock(ValueOperations.class);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
         when(valueOperations.increment(anyString())).thenReturn(1L);
         when(thingModelService.servicesCached(any())).thenReturn(List.of());
-        service = new CommandService(publisher, deviceLookupService, thingModelService,
-                redisTemplate, new SimpleMeterRegistry());
+        service = new CommandService(publisher, deviceLookupService, hostLookupService,
+                thingModelService, redisTemplate, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         ReflectionTestUtils.setField(service, "replyTimeoutSeconds", 30L);
         ReflectionTestUtils.setField(service, "rateLimitPerMinute", 30L);
@@ -71,7 +75,7 @@ class CommandServiceTest {
     @Test
     void send_publishesAndMarksSent() {
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device("ONLINE"));
-        when(publisher.publishCommand(anyString(), anyString(), anyString(), anyString(), any()))
+        when(publisher.publishCommand(anyString(), anyString(), any(), anyString(), anyString(), any()))
                 .thenReturn(true);
         CommandSendRequest request = new CommandSendRequest();
         request.setIdentifier("setInterval");
@@ -81,7 +85,8 @@ class CommandServiceTest {
 
         assertEquals("SENT", vo.getStatus());
         assertTrue(vo.getRequestId().length() >= 32);
-        verify(publisher).publishCommand(eq("default"), eq("dev-1"), eq("setInterval"),
+        verify(publisher).publishCommand(eq("default"), eq("dev-1"),
+                org.mockito.ArgumentMatchers.isNull(), eq("setInterval"),
                 eq(vo.getRequestId()), eq(Map.of("seconds", 5)));
         // 条件更新 PENDING -> SENT，避免覆盖抢先到达的回执
         verify(mapper).update(any(), any());
@@ -90,7 +95,7 @@ class CommandServiceTest {
     @Test
     void send_whenMqttDown_marksFailed() {
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device("ONLINE"));
-        when(publisher.publishCommand(anyString(), anyString(), anyString(), anyString(), any()))
+        when(publisher.publishCommand(anyString(), anyString(), any(), anyString(), anyString(), any()))
                 .thenReturn(false);
         CommandSendRequest request = new CommandSendRequest();
         request.setIdentifier("reboot");
@@ -111,7 +116,7 @@ class CommandServiceTest {
         BizException exception = assertThrows(BizException.class,
                 () -> service.send("dev-1", request, "admin"));
         assertEquals(400, exception.getCode());
-        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any());
+        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -155,7 +160,7 @@ class CommandServiceTest {
         var vo = service.send("dev-1", request, "admin");
 
         assertEquals("SUCCESS", vo.getStatus());
-        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any());
+        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any(), any());
         verify(mapper, never()).insert((DeviceCommand) any());
     }
 
@@ -169,6 +174,41 @@ class CommandServiceTest {
         BizException exception = assertThrows(BizException.class,
                 () -> service.send("dev-1", request, "admin"));
         assertEquals(429, exception.getCode());
+    }
+
+    @Test
+    void send_boundDevice_routesThroughHost() {
+        Device bound = device("ONLINE");
+        bound.setHostId(5L);
+        when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(bound);
+        IotHost host = new IotHost();
+        host.setId(5L);
+        host.setHostId("host_test");
+        host.setStatus("ONLINE");
+        when(hostLookupService.getById(5L)).thenReturn(host);
+        when(publisher.publishCommand(anyString(), anyString(), anyString(), anyString(),
+                anyString(), any())).thenReturn(true);
+        CommandSendRequest request = new CommandSendRequest();
+        request.setIdentifier("reboot");
+
+        service.send("dev-1", request, "admin");
+
+        verify(publisher).publishCommand(eq("default"), eq("dev-1"), eq("host_test"),
+                eq("reboot"), anyString(), any());
+    }
+
+    @Test
+    void send_boundDeviceWithMissingHost_isRejected() {
+        Device bound = device("ONLINE");
+        bound.setHostId(5L);
+        when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(bound);
+        when(hostLookupService.getById(5L)).thenReturn(null);
+        CommandSendRequest request = new CommandSendRequest();
+        request.setIdentifier("reboot");
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.send("dev-1", request, "admin"));
+        assertEquals(409, exception.getCode());
     }
 
     @Test
@@ -191,13 +231,13 @@ class CommandServiceTest {
         BizException exception = assertThrows(BizException.class,
                 () -> service.send("dev-1", request, "admin"));
         assertEquals(409, exception.getCode());
-        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any());
+        verify(publisher, never()).publishCommand(any(), any(), any(), any(), any(), any());
     }
 
     @Test
     void send_replyArrivesBeforeStatusUpdate_keepsSuccess() {
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device("ONLINE"));
-        when(publisher.publishCommand(anyString(), anyString(), anyString(), anyString(), any()))
+        when(publisher.publishCommand(anyString(), anyString(), any(), anyString(), anyString(), any()))
                 .thenReturn(true);
         // 回执先到：条件更新影响 0 行，随后以数据库最新状态为准
         when(mapper.update(any(), any())).thenReturn(0);

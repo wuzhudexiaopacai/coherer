@@ -5,6 +5,7 @@ import com.github.wuzhudexiaopacai.command.service.CommandPublisher;
 import com.github.wuzhudexiaopacai.command.service.CommandReplyService;
 import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
 import com.github.wuzhudexiaopacai.event.service.EventService;
+import com.github.wuzhudexiaopacai.host.service.HostStatusService;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -49,12 +50,16 @@ public class MqttGateway implements CommandPublisher {
     private static final String STATUS_TOPIC = "$share/coherer/+/+/status";
     private static final String COMMAND_REPLY_TOPIC = "$share/coherer/+/+/thing/service/reply";
     private static final String EVENT_TOPIC = "$share/coherer/+/+/thing/event/+/post";
+    private static final String HOST_STATUS_TOPIC = "$share/coherer/+/+/host/status";
+    private static final String HOST_COMMAND_REPLY_TOPIC =
+            "$share/coherer/+/+/sub/+/thing/service/reply";
 
     private final TelemetryService telemetryService;
     private final ShadowService shadowService;
     private final DeviceStatusService deviceStatusService;
     private final CommandReplyService commandReplyService;
     private final EventService eventService;
+    private final HostStatusService hostStatusService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -190,9 +195,10 @@ public class MqttGateway implements CommandPublisher {
         try {
             client.subscribe(
                     new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC,
-                            COMMAND_REPLY_TOPIC, EVENT_TOPIC},
-                    new int[]{1, 1, 1, 1, 1});
-            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执 / 设备事件");
+                            COMMAND_REPLY_TOPIC, EVENT_TOPIC, HOST_STATUS_TOPIC,
+                            HOST_COMMAND_REPLY_TOPIC},
+                    new int[]{1, 1, 1, 1, 1, 1, 1});
+            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执 / 事件 / 主机状态 / 主机命令回执");
         } catch (MqttException e) {
             log.error("共享订阅失败: {}", e.getMessage());
         }
@@ -200,16 +206,21 @@ public class MqttGateway implements CommandPublisher {
 
     /** 下发设备服务调用；返回 false 表示当前 MQTT 未连接。 */
     @Override
-    public boolean publishCommand(String tenantId, String deviceId, String identifier,
-                                  String requestId, java.util.Map<String, Object> params) {
+    public boolean publishCommand(String tenantId, String deviceId, String hostKey,
+                                  String identifier, String requestId,
+                                  java.util.Map<String, Object> params) {
         if (client == null || !client.isConnected()) {
             log.warn("MQTT 未连接，命令未下发 deviceId={} identifier={}", deviceId, identifier);
             return false;
         }
         try {
-            String topic = tenantId + "/" + deviceId + "/thing/service/" + identifier;
+            String topic = hostKey == null
+                    ? tenantId + "/" + deviceId + "/thing/service/" + identifier
+                    : tenantId + "/" + hostKey + "/sub/" + deviceId
+                            + "/thing/service/" + identifier;
             byte[] payload = objectMapper.writeValueAsBytes(java.util.Map.of(
                     "id", requestId,
+                    "deviceId", deviceId,
                     "identifier", identifier,
                     "params", params == null ? java.util.Map.of() : params,
                     "ts", System.currentTimeMillis()));
@@ -261,6 +272,15 @@ public class MqttGateway implements CommandPublisher {
                 && "event".equals(levels[3]) && "post".equals(levels[5])) {
             return "event";
         }
+        if (levels.length == 4 && "host".equals(levels[2])
+                && "status".equals(levels[3])) {
+            return "host-status";
+        }
+        if (levels.length == 7 && "sub".equals(levels[2])
+                && "thing".equals(levels[4]) && "service".equals(levels[5])
+                && "reply".equals(levels[6])) {
+            return "host-command-reply";
+        }
         return null;
     }
 
@@ -283,6 +303,12 @@ public class MqttGateway implements CommandPublisher {
                     String[] levels = topic.split("/");
                     eventService.ingest(tenantId, deviceId, levels[4], payload);
                     deviceStatusService.heartbeat(deviceId);
+                }
+                case "host-status" -> hostStatusService.onStatus(tenantId, deviceId,
+                        new String(payload, StandardCharsets.UTF_8));
+                case "host-command-reply" -> {
+                    String[] levels = topic.split("/");
+                    commandReplyService.onReply(tenantId, levels[3], payload);
                 }
                 default -> {
                 }

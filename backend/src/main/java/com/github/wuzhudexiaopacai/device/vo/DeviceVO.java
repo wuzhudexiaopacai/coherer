@@ -12,6 +12,8 @@ public class DeviceVO {
 
     private Long spaceId;
 
+    private Long hostId;
+
     private String deviceId;
 
     private String name;

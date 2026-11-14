@@ -3,6 +3,8 @@ package com.github.wuzhudexiaopacai.internal.auth;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.security.HmacSigner;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
 import java.nio.charset.StandardCharsets;
@@ -34,6 +36,7 @@ public class MqttAuthService {
     private static final long MAX_CLOCK_SKEW_MS = 5 * 60 * 1000L;
 
     private final DeviceMapper deviceMapper;
+    private final HostLookupService hostLookupService;
     private final SecretCipher secretCipher;
 
     @Value("${coherer.mqtt.ingest.client-id}")
@@ -81,6 +84,22 @@ public class MqttAuthService {
                 return false;
             }
             String expected = HmacSigner.signHex(webSecret, clientId + "|" + username);
+            return constantTimeEquals(password.toLowerCase(Locale.ROOT), expected);
+        }
+
+        // 边缘主机签名认证
+        if (clientId.startsWith("host_")) {
+            IotHost host = hostLookupService.getByHostId(clientId);
+            if (host == null) {
+                log.debug("认证失败 clientId={} 原因=主机不存在", clientId);
+                return false;
+            }
+            if ("DISABLED".equals(host.getStatus())) {
+                log.debug("认证失败 clientId={} 原因=主机已禁用", clientId);
+                return false;
+            }
+            String secret = secretCipher.decrypt(host.getSecretCipher());
+            String expected = HmacSigner.signHex(secret, clientId + "|" + username);
             return constantTimeEquals(password.toLowerCase(Locale.ROOT), expected);
         }
 

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Box, Document, Fold, Monitor, Odometer, OfficeBuilding, User } from '@element-plus/icons-vue'
+import { Bell, Box, Cpu, Document, Fold, Monitor, Odometer, OfficeBuilding, User } from '@element-plus/icons-vue'
 import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
 import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
@@ -86,6 +86,10 @@ watch(
         <router-link to="/devices" class="nav-item" active-class="active">
           <el-icon><Monitor /></el-icon>
           <span>设备管理</span>
+        </router-link>
+        <router-link to="/hosts" class="nav-item" active-class="active">
+          <el-icon><Cpu /></el-icon>
+          <span>主机管理</span>
         </router-link>
         <router-link to="/products" class="nav-item" active-class="active">
           <el-icon><Box /></el-icon>

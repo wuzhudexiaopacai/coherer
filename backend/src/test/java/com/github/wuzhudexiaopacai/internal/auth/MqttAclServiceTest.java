@@ -9,6 +9,8 @@ import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -53,9 +55,30 @@ class MqttAclServiceTest {
 
         when(spaceService.descendantIds(10L)).thenReturn(List.of(10L));
 
-        service = new MqttAclService(deviceLookupService, userMapper, spaceService);
+        service = new MqttAclService(deviceLookupService, mock(HostLookupService.class),
+                userMapper, spaceService);
         ReflectionTestUtils.setField(service, "ingestClientId", "coherer-ingest");
         ReflectionTestUtils.setField(service, "ingestUsername", "service");
+    }
+
+    @Test
+    void authorize_host_allowsOwnPrefixOnly() {
+        HostLookupService hostLookup = mock(HostLookupService.class);
+        IotHost host = new IotHost();
+        host.setHostId("host_abc");
+        host.setTenantId("default");
+        host.setStatus("ONLINE");
+        when(hostLookup.getByHostId("host_abc")).thenReturn(host);
+        MqttAclService hostAcl = new MqttAclService(mock(DeviceLookupService.class),
+                hostLookup, mock(SysUserMapper.class), mock(SpaceService.class));
+        ReflectionTestUtils.setField(hostAcl, "ingestClientId", "coherer-ingest");
+        ReflectionTestUtils.setField(hostAcl, "ingestUsername", "service");
+
+        assertTrue(hostAcl.authorize("host_abc", "123", "default/host_abc/host/status", "publish"));
+        assertTrue(hostAcl.authorize("host_abc", "123",
+                "default/host_abc/sub/dev_1/thing/service/reply", "publish"));
+        assertFalse(hostAcl.authorize("host_abc", "123",
+                "default/other_host/host/status", "publish"));
     }
 
     @Test

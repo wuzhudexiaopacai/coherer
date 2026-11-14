@@ -8,6 +8,6 @@ public interface CommandPublisher {
     /**
      * @return false 表示当前 MQTT 未连接，命令无法下发
      */
-    boolean publishCommand(String tenantId, String deviceId, String identifier,
-                           String requestId, Map<String, Object> params);
+    boolean publishCommand(String tenantId, String deviceId, String hostKey,
+                           String identifier, String requestId, Map<String, Object> params);
 }

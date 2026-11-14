@@ -22,6 +22,11 @@ public final class Ids {
         return "dev_" + randomHex(8);
     }
 
+    /** 主机标识：host_ + 16 位十六进制（MQTT clientId） */
+    public static String hostId() {
+        return "host_" + randomHex(8);
+    }
+
     /** 设备密钥：32 字节安全随机数，Base64URL 编码 */
     public static String deviceSecret() {
         byte[] bytes = new byte[32];

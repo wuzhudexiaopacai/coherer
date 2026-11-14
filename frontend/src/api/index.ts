@@ -21,7 +21,9 @@ import type {
   UserItem,
   CommandRecord,
   AuditLogItem,
-  DeviceEvent
+  DeviceEvent,
+  Host,
+  HostRegisterResult
 } from './types'
 
 export const api = {
@@ -90,6 +92,38 @@ export const api = {
     request<PageResult<Device>>({ url: '/devices', method: 'get', params }),
 
   getDevice: (id: string) => request<Device>({ url: `/devices/${id}`, method: 'get' }),
+
+  listHosts: (params: {
+    current?: number
+    size?: number
+    keyword?: string
+    spaceId?: string
+  } = {}) => request<PageResult<Host>>({ url: '/hosts', method: 'get', params }),
+
+  registerHost: (body: {
+    name: string
+    spaceId?: string
+    model?: string
+    firmwareVersion?: string
+  }) => request<HostRegisterResult>({ url: '/hosts', method: 'post', data: body }),
+
+  hostDevices: (id: string) =>
+    request<Device[]>({ url: `/hosts/${id}/devices`, method: 'get' }),
+
+  bindHostDevice: (id: string, deviceId: string) =>
+    request<void>({ url: `/hosts/${id}/devices/${deviceId}`, method: 'post' }),
+
+  unbindHostDevice: (id: string, deviceId: string) =>
+    request<void>({ url: `/hosts/${id}/devices/${deviceId}`, method: 'delete' }),
+
+  enableHost: (id: string) => request<Host>({ url: `/hosts/${id}/enable`, method: 'post' }),
+
+  disableHost: (id: string) => request<Host>({ url: `/hosts/${id}/disable`, method: 'post' }),
+
+  rotateHostSecret: (id: string) =>
+    request<HostRegisterResult>({ url: `/hosts/${id}/rotate-secret`, method: 'post' }),
+
+  deleteHost: (id: string) => request<void>({ url: `/hosts/${id}`, method: 'delete' }),
 
   enableDevice: (id: string) =>
     request<Device>({ url: `/devices/${id}/enable`, method: 'post' }),

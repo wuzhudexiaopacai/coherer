@@ -9,6 +9,8 @@ import com.github.wuzhudexiaopacai.command.vo.CommandVO;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.thingmodel.entity.ThingModel;
 import com.github.wuzhudexiaopacai.thingmodel.service.ThingModelService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -44,6 +46,7 @@ public class CommandService extends ServiceImpl<DeviceCommandMapper, DeviceComma
 
     private final CommandPublisher commandPublisher;
     private final DeviceLookupService deviceLookupService;
+    private final HostLookupService hostLookupService;
     private final ThingModelService thingModelService;
     private final StringRedisTemplate redisTemplate;
     private final MeterRegistry meterRegistry;
@@ -100,8 +103,20 @@ public class CommandService extends ServiceImpl<DeviceCommandMapper, DeviceComma
             throw e;
         }
 
+        String hostKey = null;
+        if (device.getHostId() != null) {
+            IotHost host = hostLookupService.getById(device.getHostId());
+            if (host == null) {
+                throw new BizException(409, "设备所属主机不存在，无法下发命令");
+            }
+            if ("DISABLED".equals(host.getStatus())) {
+                throw new BizException(409, "设备所属主机已禁用，无法下发命令");
+            }
+            hostKey = host.getHostId();
+        }
         boolean published = commandPublisher.publishCommand(
-                device.getTenantId(), deviceId, request.getIdentifier(), requestId, params);
+                device.getTenantId(), deviceId, hostKey, request.getIdentifier(),
+                requestId, params);
         OffsetDateTime sentAt = OffsetDateTime.now();
         if (published) {
             // 条件更新：设备回执可能先于本次更新到达，绝不能把 SUCCESS 覆盖回 SENT

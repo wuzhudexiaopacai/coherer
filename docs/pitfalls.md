@@ -262,7 +262,20 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **原因**：进程在保存后、发布前崩溃；超时巡检只处理 SENT。  
 **修复**：巡检同时处理超时 PENDING（按 `created_at`）。
 
-## 9. 提交索引
+## 9. 边缘主机
+
+### 9.1 主机子设备主题层级数错一位
+
+**现象**：主机模拟器能连上、能收到主机命令，但不回执，命令最终 TIMEOUT。  
+**原因**：主题 `tenant/hostId/sub/deviceId/thing/service/reboot` 是 7 段，模拟器按 6 段判断直接 return。  
+**修复**：长度改为 7，deviceId 取 `levels[3]`，identifier 取 `levels[6]` 或 payload。
+
+### 9.2 主机不能只绑定不接受 ACL 校验
+
+**做法**：主机 clientId 以 `host_` 开头，认证查 `iot_host`；ACL 仅允许 `{tenant}/{hostId}/host/#` 与 `{tenant}/{hostId}/sub/#`。  
+**验证**：主机可订阅子设备命令、发布回执；跨主机前缀被拒绝。
+
+## 10. 提交索引
 
 | 提交 | 内容 |
 |---|---|
@@ -288,6 +301,7 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 | `e19db8d` | Refresh Token 轮换/重放拒绝 |
 | `d493974` | 告警活动集合批量读取 |
 | `f1f42a7` | TDengine space_id tag/保留期 |
+| `042c79d` | 设备事件上报 |
 
 ## 10. 仍建议优先处理
 

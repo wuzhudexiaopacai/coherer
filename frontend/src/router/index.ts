@@ -7,6 +7,7 @@ const DashboardView = () => import('../views/DashboardView.vue')
 const DevicesView = () => import('../views/DevicesView.vue')
 const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
 const ProductsView = () => import('../views/ProductsView.vue')
+const HostsView = () => import('../views/HostsView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
 const UsersView = () => import('../views/UsersView.vue')
@@ -42,6 +43,12 @@ const router = createRouter({
           name: 'device-detail',
           component: DeviceDetailView,
           meta: { title: '设备详情', subtitle: '实时监控 · 设备影子 · 历史数据' }
+        },
+        {
+          path: 'hosts',
+          name: 'hosts',
+          component: HostsView,
+          meta: { title: '主机管理', subtitle: '边缘主机 · 子设备绑定 · 命令转发' }
         },
         {
           path: 'products',
