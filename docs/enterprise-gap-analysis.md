@@ -17,7 +17,7 @@
 | 安全 | 7/10 | JWT+RBAC、内部令牌、密钥外置、REST 数据权限、端口收敛、Redis/TDengine 口令；剩余 WSS 默认与 PG/TD TLS |
 | 可靠性/性能 | 6/10 | 幂等去重、有界队列批量写入、停机冲刷、告警状态 Redis 一致、在线 TTL 兜底；剩余无 HA 与压测 |
 | 可观测性 | 9/10 | Prometheus+Grafana+Alertmanager、Zipkin 链路、ECS 结构化日志、审计日志、探针分组 |
-| 测试质量 | 5/10 | 109 个单元测试覆盖权限/幂等/告警/遥测；仍缺 Controller/Testcontainers/前端测试 |
+| 测试质量 | 6/10 | 125 个后端单测 + 11 个前端 Vitest；仍缺 Controller/Testcontainers/端到端 |
 | 功能完整度 | 6/10 | 核心链路完整；需求文档中多项 M2 功能未实现 |
 | 交付工程化 | 5/10 | GitHub Actions（测试/构建/配置校验）、环境分层、Compose 一键启动；剩余镜像发布与 OpenAPI |
 
@@ -209,7 +209,7 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；Dashboard 口令轮换；**所有基础设施端口收敛到 127.0.0.1**；**Redis requirepass + TDengine 强制口令**；**指标端点要求内部令牌**；WSS 默认与 PG/TD TLS 待补 |
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
-| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 109 个测试 + 打包、前端 type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、前端单测、覆盖率门禁待补 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 125 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
 | E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理已完成**；事件上报、区间聚合、通知渠道、规则版本待做 |
 | F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
 
