@@ -3,6 +3,7 @@ package com.github.wuzhudexiaopacai.alarm.controller;
 import com.github.wuzhudexiaopacai.alarm.service.AlarmRecordService;
 import com.github.wuzhudexiaopacai.alarm.vo.AlarmRecordVO;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +28,9 @@ public class AlarmController {
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String deviceId,
             @RequestParam(required = false) Long spaceId) {
-        return ApiResponse.ok(alarmRecordService.page(current, size, status, level, deviceId, spaceId));
+        return ApiResponse.ok(alarmRecordService.page(
+                PageParams.current(current), PageParams.size(size, 100),
+                status, level, deviceId, spaceId));
     }
 
     @PostMapping("/{id}/ack")

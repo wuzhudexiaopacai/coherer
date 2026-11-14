@@ -30,7 +30,7 @@ class MqttAuthServiceTest {
     @Test
     void authenticate_webCredentialWithValidSignature_allows() {
         String clientId = "web-abc123";
-        String username = "web:" + (System.currentTimeMillis() + 60_000);
+        String username = "web:1:" + (System.currentTimeMillis() + 60_000);
         String password = HmacSigner.signHex(WEB_SECRET, clientId + "|" + username);
 
         assertTrue(service.authenticate(clientId, username, password));
@@ -39,7 +39,7 @@ class MqttAuthServiceTest {
     @Test
     void authenticate_expiredWebCredential_denies() {
         String clientId = "web-abc123";
-        String username = "web:" + (System.currentTimeMillis() - 1_000);
+        String username = "web:1:" + (System.currentTimeMillis() - 1_000);
         String password = HmacSigner.signHex(WEB_SECRET, clientId + "|" + username);
 
         assertFalse(service.authenticate(clientId, username, password));
@@ -48,7 +48,7 @@ class MqttAuthServiceTest {
     @Test
     void authenticate_webCredentialWithoutWebClientPrefix_denies() {
         String clientId = "device-1";
-        String username = "web:" + (System.currentTimeMillis() + 60_000);
+        String username = "web:1:" + (System.currentTimeMillis() + 60_000);
         String password = HmacSigner.signHex(WEB_SECRET, clientId + "|" + username);
 
         assertFalse(service.authenticate(clientId, username, password));
@@ -57,7 +57,7 @@ class MqttAuthServiceTest {
     @Test
     void authenticate_webCredentialWithWrongSignature_denies() {
         String clientId = "web-abc123";
-        String username = "web:" + (System.currentTimeMillis() + 60_000);
+        String username = "web:1:" + (System.currentTimeMillis() + 60_000);
 
         assertFalse(service.authenticate(clientId, username, "deadbeef"));
     }

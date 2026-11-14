@@ -27,6 +27,9 @@ public class SysUser {
     /** ADMIN / OPERATOR / VIEWER */
     private String role;
 
+    /** 数据范围：空间 ID（含子空间）；NULL 表示全部空间 */
+    private Long spaceId;
+
     /** ACTIVE / DISABLED */
     private String status;
 

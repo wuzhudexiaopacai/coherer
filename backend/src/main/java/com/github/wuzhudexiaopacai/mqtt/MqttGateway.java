@@ -62,6 +62,12 @@ public class MqttGateway {
     @Value("${coherer.mqtt.ingest.secret}")
     private String secret;
 
+    @Value("${coherer.mqtt.tls-enabled:false}")
+    private boolean tlsEnabled;
+
+    @Value("${coherer.mqtt.ca-file:../deploy/certs/ca.crt}")
+    private String caFile;
+
     private final AtomicBoolean connecting = new AtomicBoolean(false);
     private MqttAsyncClient client;
 
@@ -69,7 +75,7 @@ public class MqttGateway {
     void init() {
         try {
             client = new MqttAsyncClient(
-                    "tcp://" + brokerHost + ":" + brokerPort,
+                    (tlsEnabled ? "ssl" : "tcp") + "://" + brokerHost + ":" + brokerPort,
                     clientId,
                     new MemoryPersistence());
             client.setCallback(new MqttCallbackExtended() {
@@ -155,6 +161,9 @@ public class MqttGateway {
             options.setAutomaticReconnect(true);
             options.setConnectionTimeout(10);
             options.setKeepAliveInterval(60);
+            if (tlsEnabled) {
+                options.setSocketFactory(MqttTlsSupport.socketFactory(caFile));
+            }
             client.connect(options).waitForCompletion(10_000);
         } catch (MqttException e) {
             log.warn("接入 EMQX 失败: {}", e.getMessage());

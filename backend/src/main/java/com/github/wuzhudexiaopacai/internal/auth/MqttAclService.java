@@ -2,9 +2,13 @@ package com.github.wuzhudexiaopacai.internal.auth;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.github.wuzhudexiaopacai.auth.entity.SysUser;
+import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.time.Duration;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +34,8 @@ public class MqttAclService {
     private static final Logger log = LoggerFactory.getLogger(MqttAclService.class);
 
     private final DeviceLookupService deviceLookupService;
+    private final SysUserMapper userMapper;
+    private final SpaceService spaceService;
 
     @Value("${coherer.mqtt.ingest.client-id}")
     private String ingestClientId;
@@ -56,12 +62,9 @@ public class MqttAclService {
             return true;
         }
 
-        // 浏览器账号：只读订阅遥测/状态
+        // 浏览器账号：只读订阅遥测/状态，并按用户空间数据范围限制
         if (clientId.startsWith("web-") && username != null && username.startsWith("web:")) {
-            if (!"subscribe".equals(action)) {
-                return false;
-            }
-            return isTelemetryTopic(topic) || isStatusTopic(topic);
+            return authorizeWeb(username, topic, action);
         }
 
         // 设备账号：仅限自身主题空间
@@ -80,6 +83,42 @@ public class MqttAclService {
             log.debug("ACL 拒绝：设备越权 clientId={} topic={} action={}", clientId, topic, action);
         }
         return allowed;
+    }
+
+    private boolean authorizeWeb(String username, String topic, String action) {
+        if (!"subscribe".equals(action) || !(isTelemetryTopic(topic) || isStatusTopic(topic))) {
+            return false;
+        }
+        String[] parts = username.split(":");
+        if (parts.length != 3) {
+            return false;
+        }
+        long userId;
+        try {
+            userId = Long.parseLong(parts[1]);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        SysUser user = userMapper.selectById(userId);
+        if (user == null || !"ACTIVE".equals(user.getStatus())) {
+            return false;
+        }
+        // 未设置空间 = 全平台数据范围
+        if (user.getSpaceId() == null) {
+            return true;
+        }
+        // 受限用户：禁止通配符订阅，只允许其空间（含子空间）下的具体设备
+        String[] levels = topic.split("/");
+        String deviceId = levels.length >= 2 ? levels[1] : null;
+        if (deviceId == null || "+".equals(deviceId) || "#".equals(deviceId)) {
+            return false;
+        }
+        Device device = deviceLookupService.getByDeviceId(deviceId);
+        if (device == null || device.getSpaceId() == null) {
+            return false;
+        }
+        List<Long> allowedSpaces = spaceService.descendantIds(user.getSpaceId());
+        return allowedSpaces.contains(device.getSpaceId());
     }
 
     private boolean isTelemetryTopic(String topic) {

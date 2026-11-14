@@ -1,0 +1,7 @@
+# HTTPS Profile：本地自签 CA 签发的服务端证书（deploy/certs/gen-certs.sh 生成）
+server:
+  port: 8443
+  ssl:
+    enabled: true
+    certificate: ${COHERER_TLS_CERT:../deploy/certs/server.crt}
+    certificate-private-key: ${COHERER_TLS_KEY:../deploy/certs/server.key}

@@ -1,6 +1,7 @@
 package com.github.wuzhudexiaopacai.device.controller;
 
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import com.github.wuzhudexiaopacai.device.dto.DeviceRegisterRequest;
 import com.github.wuzhudexiaopacai.device.service.DeviceService;
@@ -38,7 +39,9 @@ public class DeviceController {
             @RequestParam(required = false) Long spaceId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(deviceService.page(current, size, productId, status, keyword, spaceId));
+        return ApiResponse.ok(deviceService.page(
+                PageParams.current(current), PageParams.size(size, 100),
+                productId, status, keyword, spaceId));
     }
 
     @GetMapping("/{id}")

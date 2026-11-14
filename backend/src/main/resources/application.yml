@@ -59,7 +59,10 @@ coherer:
     admin-password: ${COHERER_ADMIN_PASSWORD}
   mqtt:
     broker-host: localhost
-    broker-port: 1883
+    broker-port: ${COHERER_MQTT_BROKER_PORT:1883}
+    # 后端 → EMQX 是否启用 TLS（8883）及 CA 证书路径
+    tls-enabled: ${COHERER_MQTT_TLS_ENABLED:false}
+    ca-file: ${COHERER_MQTT_CA_FILE:../deploy/certs/ca.crt}
     # 后端服务账号：以该身份连接 EMQX 消费遥测（M2 起由认证回调校验）
     ingest:
       client-id: coherer-ingest
@@ -68,7 +71,7 @@ coherer:
     web:
       # 浏览器实时订阅：后端签发短时凭证，前端经 WebSocket 连接 EMQX
       secret: ${COHERER_WEB_SECRET}
-      ws-url: ws://localhost:8083/mqtt
+      ws-url: ${COHERER_MQTT_WS_URL:ws://localhost:8083/mqtt}
       credential-ttl-seconds: 300
   tdengine:
     url: jdbc:TAOS-WS://localhost:6041

@@ -192,9 +192,9 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 |---|---|---|
 | A1 密钥外置与环境分层 | ✅ 2026-11-14 | `application.yml` 全部改为环境变量；新增 `backend/.env.example`、`deploy/.env.example`；缺少变量启动即失败；Compose 数据库密码从 `deploy/.env` 注入 |
 | A2 用户认证 + RBAC | ✅ 2026-11-14 | Spring Security 无状态 JWT（access + refresh）；ADMIN / OPERATOR / VIEWER 路由级 RBAC；前端登录页、路由守卫、按角色隐藏写操作；46 个单测通过 |
-| A3 内部接口与 Web 凭证保护 | 🟡 部分完成 | `/internal/**` 校验 `X-Internal-Token`（EMQX 回调已带头）；`/api/mqtt/credentials` 需登录；**按用户/空间的数据范围仍未绑定** |
-| A4 限流与 HTTP 语义 | 🟡 部分完成 | `BizException` 已按 401/403/404/409 返回正确 HTTP 状态；登录限流与分页上限待补 |
-| A5 传输安全 | ⬜ 待开始 | REST HTTPS、WSS、内部链路 TLS、Dashboard 口令 |
+| A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户可获取，用户名内嵌 userId/过期时间；ACL 按用户空间（含子空间）限制设备订阅；**REST 接口的数据权限仍待补** |
+| A4 限流与 HTTP 语义 | ✅ 2026-11-14 | 登录失败 5 次/5 分钟限流（同用户名+IP，429）；分页 size 上限 100；`BizException` 按 401/403/404/409 返回 |
+| A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；EMQX Dashboard 口令已轮换（默认 public 失效）；WSS 地址可配置（信任 CA 后启用）；PG/Redis/TDengine TLS 待补 |
 | B 可观测性 | ⬜ 待开始 | Prometheus、trace-id、审计日志 |
 | C 可靠性/M3 | ⬜ 待开始 | Kafka 分区、幂等、水位、批量写入 |
 | D 测试与 CI | ⬜ 待开始 | Testcontainers、前端测试、覆盖率门禁、Actions |

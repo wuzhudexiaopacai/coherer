@@ -93,6 +93,7 @@ export interface MqttCredential {
   username: string
   password: string
   ttlSeconds: number
+  spaceId?: string | null
 }
 
 export interface UserInfo {
@@ -100,6 +101,7 @@ export interface UserInfo {
   username: string
   nickname: string
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
+  spaceId?: string | null
 }
 
 export interface AuthResponse {

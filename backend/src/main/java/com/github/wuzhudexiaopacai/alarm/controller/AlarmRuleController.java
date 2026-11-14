@@ -5,6 +5,7 @@ import com.github.wuzhudexiaopacai.alarm.dto.AlarmRuleUpdateRequest;
 import com.github.wuzhudexiaopacai.alarm.service.AlarmRuleService;
 import com.github.wuzhudexiaopacai.alarm.vo.AlarmRuleVO;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +31,8 @@ public class AlarmRuleController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) Long productId) {
-        return ApiResponse.ok(alarmRuleService.page(current, size, productId));
+        return ApiResponse.ok(alarmRuleService.page(
+                PageParams.current(current), PageParams.size(size, 100), productId));
     }
 
     @PostMapping

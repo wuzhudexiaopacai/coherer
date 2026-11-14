@@ -60,14 +60,19 @@ public class MqttAuthService {
             return constantTimeEquals(password, ingestSecret);
         }
 
-        // 浏览器实时订阅账号（后端签发短时凭证）
+        // 浏览器实时订阅账号（后端签发短时凭证：web:<userId>:<expiry>）
         if (username.startsWith("web:")) {
             if (!clientId.startsWith("web-")) {
                 return false;
             }
+            String[] parts = username.split(":");
+            if (parts.length != 3) {
+                return false;
+            }
             long expiry;
             try {
-                expiry = Long.parseLong(username.substring(4));
+                Long.parseLong(parts[1]);
+                expiry = Long.parseLong(parts[2]);
             } catch (NumberFormatException e) {
                 return false;
             }

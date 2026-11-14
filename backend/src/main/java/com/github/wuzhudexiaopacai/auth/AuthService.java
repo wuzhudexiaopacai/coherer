@@ -21,15 +21,21 @@ public class AuthService {
     private final SysUserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginAttemptService loginAttemptService;
 
-    public AuthResponse login(LoginRequest request) {
+    public AuthResponse login(LoginRequest request, String clientIp) {
+        if (loginAttemptService.isBlocked(request.getUsername(), clientIp)) {
+            throw new BizException(429, "登录尝试过于频繁，请稍后再试");
+        }
         SysUser user = findByUsername(request.getUsername());
         if (user == null || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            loginAttemptService.recordFailure(request.getUsername(), clientIp);
             throw new BizException(401, "用户名或密码错误");
         }
         if (!"ACTIVE".equals(user.getStatus())) {
             throw new BizException(403, "账号已禁用");
         }
+        loginAttemptService.reset(request.getUsername(), clientIp);
         return buildResponse(user);
     }
 
@@ -75,6 +81,7 @@ public class AuthService {
         vo.setUsername(user.getUsername());
         vo.setNickname(user.getNickname());
         vo.setRole(user.getRole());
+        vo.setSpaceId(user.getSpaceId());
         return vo;
     }
 }

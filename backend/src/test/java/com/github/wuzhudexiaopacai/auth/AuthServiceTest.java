@@ -31,7 +31,7 @@ class AuthServiceTest {
         userMapper = mock(SysUserMapper.class);
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
-        authService = new AuthService(userMapper, encoder, jwtService);
+        authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService());
 
         user = new SysUser();
         user.setId(1L);
@@ -49,7 +49,7 @@ class AuthServiceTest {
         request.setUsername("admin");
         request.setPassword("Admin@123");
 
-        AuthResponse response = authService.login(request);
+        AuthResponse response = authService.login(request, "127.0.0.1");
 
         assertFalse(response.getAccessToken().isBlank());
         assertFalse(response.getRefreshToken().isBlank());
@@ -62,8 +62,39 @@ class AuthServiceTest {
         request.setUsername("admin");
         request.setPassword("wrong");
 
-        BizException exception = assertThrows(BizException.class, () -> authService.login(request));
+        BizException exception = assertThrows(BizException.class,
+                () -> authService.login(request, "127.0.0.1"));
         assertEquals(401, exception.getCode());
+    }
+
+    @Test
+    void login_repeatedFailures_blocksWith429() {
+        LoginRequest request = new LoginRequest();
+        request.setUsername("admin");
+        request.setPassword("wrong");
+        for (int i = 0; i < 5; i++) {
+            assertThrows(BizException.class, () -> authService.login(request, "127.0.0.1"));
+        }
+
+        BizException exception = assertThrows(BizException.class,
+                () -> authService.login(request, "127.0.0.1"));
+        assertEquals(429, exception.getCode());
+    }
+
+    @Test
+    void login_successResetsFailureCounter() {
+        LoginRequest wrong = new LoginRequest();
+        wrong.setUsername("admin");
+        wrong.setPassword("wrong");
+        for (int i = 0; i < 4; i++) {
+            assertThrows(BizException.class, () -> authService.login(wrong, "127.0.0.1"));
+        }
+        LoginRequest right = new LoginRequest();
+        right.setUsername("admin");
+        right.setPassword("Admin@123");
+        authService.login(right, "127.0.0.1");
+
+        assertThrows(BizException.class, () -> authService.login(wrong, "127.0.0.1"));
     }
 
     @Test
@@ -73,7 +104,8 @@ class AuthServiceTest {
         request.setUsername("admin");
         request.setPassword("Admin@123");
 
-        BizException exception = assertThrows(BizException.class, () -> authService.login(request));
+        BizException exception = assertThrows(BizException.class,
+                () -> authService.login(request, "127.0.0.1"));
         assertEquals(403, exception.getCode());
     }
 

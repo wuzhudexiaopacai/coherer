@@ -8,10 +8,12 @@ import StatCard from '../components/StatCard.vue'
 import LineAreaChart from '../components/LineAreaChart.vue'
 import DonutChart from '../components/DonutChart.vue'
 import { subscribeRealtime } from '../realtime/mqtt'
+import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtNumber } from '../utils/format'
 
 const spaceStore = useSpaceStore()
+const auth = useAuthStore()
 
 const overview = ref<Overview | null>(null)
 const trend = ref<TrendPoint[]>([])
@@ -88,7 +90,9 @@ onMounted(async () => {
   await spaceStore.ensureLoaded()
   await Promise.all([loadOverview(), loadTrend(), loadRecent()])
   loading.value = false
-  unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', (topic, payload) => {
+  // 空间受限用户不使用全平台通配符订阅，实时数据由轮询兜底
+  if (auth.user?.spaceId == null) {
+    unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', (topic, payload) => {
     try {
       const data = JSON.parse(payload) as {
         ts?: number
@@ -107,7 +111,8 @@ onMounted(async () => {
     } catch {
       // 忽略无法解析的消息
     }
-  })
+    })
+  }
   timer = window.setInterval(() => {
     loadOverview()
     loadRecent()

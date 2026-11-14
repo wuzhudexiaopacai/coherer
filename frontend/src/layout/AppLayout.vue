@@ -14,8 +14,10 @@ const menuOpen = ref(false)
 let unsubscribeRealtime: (() => void) | undefined
 
 onMounted(() => {
-  // 全局保活订阅：任何页面都保持实时连接，顶栏状态准确
-  unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
+  // 全平台角色才做全局通配符订阅；空间受限用户的通配符会被 ACL 拒绝
+  if (auth.user?.spaceId == null) {
+    unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
+  }
   void spaceStore.ensureLoaded()
 })
 

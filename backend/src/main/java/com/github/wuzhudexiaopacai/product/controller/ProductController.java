@@ -1,6 +1,7 @@
 package com.github.wuzhudexiaopacai.product.controller;
 
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
 import com.github.wuzhudexiaopacai.product.dto.ProductCreateRequest;
 import com.github.wuzhudexiaopacai.product.dto.ProductUpdateRequest;
@@ -35,7 +36,8 @@ public class ProductController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword) {
-        return ApiResponse.ok(productService.page(current, size, keyword));
+        return ApiResponse.ok(productService.page(
+                PageParams.current(current), PageParams.size(size, 100), keyword));
     }
 
     @GetMapping("/{id}")

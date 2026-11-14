@@ -78,7 +78,11 @@ python simulator.py --credentials creds.json --tls
 
 # 5. 查看数据
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
-#    EMQX 控制台: http://localhost:18083 (admin / public) 查看连接与流量
+#    EMQX 控制台: http://localhost:18083 (admin / EMQX_DASHBOARD_PASSWORD)
+#
+# 可选：HTTPS Profile（本地自签 CA）
+#    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
+#    curl --ssl-no-revoke --cacert ../deploy/certs/ca.crt https://localhost:8443/api/ping
 
 # 6. 前端看板（另开终端）
 cd frontend

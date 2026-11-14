@@ -53,6 +53,8 @@ services:
           }
         ]
       EMQX_AUTHORIZATION__NO_MATCH: deny
+      # 管理控制台默认口令（仅首次初始化生效；已有数据卷用 emqx ctl admins passwd 修改）
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${EMQX_DASHBOARD_PASSWORD}
       # TLS 监听器证书（首次启动前先执行 deploy/certs/gen-certs.sh）
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__CERTFILE: /opt/emqx/etc/certs/server.crt
       EMQX_LISTENERS__SSL__DEFAULT__SSL_OPTIONS__KEYFILE: /opt/emqx/etc/certs/server.key
