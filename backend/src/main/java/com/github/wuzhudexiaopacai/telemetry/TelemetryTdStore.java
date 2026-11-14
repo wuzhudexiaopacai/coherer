@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -15,7 +14,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
-/** TDengine 遥测读写：超级表 stb_telemetry，设备维度子表 d_{deviceId}。 */
+/** TDengine 遥测查询：超级表 stb_telemetry，设备维度子表 d_{deviceId}。写入见 {@link TelemetryBatchWriter}。 */
 @Component
 public class TelemetryTdStore {
 
@@ -26,15 +25,6 @@ public class TelemetryTdStore {
                             ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
-    }
-
-    public void insert(String tenantId, String deviceId, Long productId,
-                       long tsMillis, Map<String, Object> params) throws Exception {
-        String payload = objectMapper.writeValueAsString(params);
-        String subTable = "d_" + deviceId.replaceAll("[^A-Za-z0-9_]", "_");
-        String sql = "INSERT INTO coherer." + subTable
-                + " USING coherer.stb_telemetry TAGS (?, ?, ?) (ts, payload) VALUES (?, ?)";
-        jdbc.update(sql, deviceId, tenantId, productId, new Timestamp(tsMillis), payload);
     }
 
     public List<TelemetryVO> recent(String deviceId, int limit) {

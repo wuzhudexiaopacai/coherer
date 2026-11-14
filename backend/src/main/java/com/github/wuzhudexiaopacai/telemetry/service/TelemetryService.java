@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.alarm.service.AlarmRecordService;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.telemetry.TelemetryBatchWriter;
+import com.github.wuzhudexiaopacai.telemetry.TelemetryIngestBuffer;
 import com.github.wuzhudexiaopacai.telemetry.TelemetryTdStore;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
 import com.github.wuzhudexiaopacai.thingmodel.entity.ThingModel;
@@ -23,6 +25,10 @@ import org.springframework.stereotype.Service;
 /**
  * 遥测处理：按物模型校验后写入 TDengine。
  * 未定义物模型的产品放行（兼容性）；定义了物模型则严格校验未知属性、类型与范围。
+ *
+ * <p>幂等：优先使用消息体 {@code id} 作为幂等键（设备维度），在 TTL 窗口内重复投递
+ * （QoS1 重传、共享订阅重平衡）会被丢弃；没有 {@code id} 时退化为
+ * {@code deviceId + ts + params} 指纹去重。</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -34,6 +40,9 @@ public class TelemetryService {
     private final DeviceLookupService deviceLookupService;
     private final ThingModelService thingModelService;
     private final TelemetryTdStore tdStore;
+    private final TelemetryBatchWriter batchWriter;
+    private final TelemetryIngestBuffer ingestBuffer;
+    private final TelemetryIdempotencyService idempotencyService;
     private final AlarmRecordService alarmRecordService;
     private final MeterRegistry meterRegistry;
 
@@ -43,6 +52,7 @@ public class TelemetryService {
             JsonNode paramsNode = root.path("params");
             if (!paramsNode.isObject()) {
                 log.debug("遥测缺少 params，丢弃 deviceId={}", deviceId);
+                meterRegistry.counter("coherer.telemetry.ingested", "result", "invalid").increment();
                 return;
             }
             Map<String, Object> params = objectMapper.convertValue(
@@ -52,13 +62,38 @@ public class TelemetryService {
             Device device = deviceLookupService.getByDeviceId(deviceId);
             if (device == null) {
                 log.debug("收到未注册设备的遥测，丢弃 deviceId={}", deviceId);
+                meterRegistry.counter("coherer.telemetry.ingested", "result", "unknown_device")
+                        .increment();
                 return;
             }
 
             List<ThingModel> properties = thingModelService.propertiesCached(device.getProductId());
             Map<String, Object> normalized = validate(properties, params);
             long ts = root.path("ts").asLong(System.currentTimeMillis());
-            tdStore.insert(tenantId, deviceId, device.getProductId(), ts, normalized);
+
+            String messageId = root.path("id").asText("");
+            String dedupKey = idempotencyService.key(deviceId, messageId, ts, normalized);
+            if (!idempotencyService.markIfNew(dedupKey)) {
+                log.debug("重复遥测已丢弃 deviceId={} id={} ts={}", deviceId, messageId, ts);
+                meterRegistry.counter("coherer.telemetry.ingested", "result", "duplicate").increment();
+                return;
+            }
+
+            TelemetryBatchWriter.Row row = new TelemetryBatchWriter.Row(
+                    tenantId, deviceId, device.getProductId(), ts, normalized);
+            // 优先入队批量写入；队列满时同步写入兜底（背压，不丢数据）
+            if (!ingestBuffer.offer(row, dedupKey)) {
+                boolean written = batchWriter.writeOne(row);
+                if (!written) {
+                    idempotencyService.release(dedupKey);
+                    meterRegistry.counter("coherer.telemetry.ingested", "result", "error")
+                            .increment();
+                    return;
+                }
+            }
+
+            // 告警评估同步执行以保证时效；写入由缓冲批量完成。
+            // 极端情况下持久化失败而告警已触发：宁可多报一条告警，也不延迟告警。
             alarmRecordService.evaluate(device, normalized);
             meterRegistry.counter("coherer.telemetry.ingested", "result", "ok").increment();
         } catch (IllegalArgumentException e) {

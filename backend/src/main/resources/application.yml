@@ -68,8 +68,14 @@ coherer:
     # 在线状态巡检间隔与首次延迟
     online-sweep-interval-ms: ${COHERER_DEVICE_ONLINE_SWEEP_INTERVAL_MS:60000}
     online-sweep-initial-delay-ms: ${COHERER_DEVICE_ONLINE_SWEEP_INITIAL_DELAY_MS:30000}
-  security:
-    # AES-256-GCM 主密钥（Base64，32 字节），必须由环境变量注入
+  telemetry:
+    # 幂等去重窗口：TTL 内同一设备重复投递只处理一次
+    dedup-ttl-seconds: ${COHERER_TELEMETRY_DEDUP_TTL_SECONDS:600}
+    # 写入缓冲：容量、批量大小、冲刷间隔
+    buffer-capacity: ${COHERER_TELEMETRY_BUFFER_CAPACITY:10000}
+    batch-size: ${COHERER_TELEMETRY_BATCH_SIZE:200}
+    flush-interval-ms: ${COHERER_TELEMETRY_FLUSH_INTERVAL_MS:200}
+  security:    # AES-256-GCM 主密钥（Base64，32 字节），必须由环境变量注入
     secret-key: ${COHERER_SECRET_KEY}
     # JWT 签名密钥（至少 32 字节）与令牌有效期
     jwt-secret: ${COHERER_JWT_SECRET}
