@@ -210,3 +210,13 @@ export interface AuditLogItem {
   userAgent?: string
   createdAt: string
 }
+
+export interface DeviceEvent {
+  id: string
+  deviceId: string
+  identifier: string
+  eventId?: string
+  ts: string
+  params: Record<string, unknown>
+  createdAt: string
+}

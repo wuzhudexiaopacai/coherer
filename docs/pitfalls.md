@@ -228,7 +228,13 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **原因**：固定列宽总和超过容器宽度。  
 **修复**：按容器预算收窄列宽、移除装饰性箭头列；用 `wrap.scrollWidth == clientWidth` 验证。
 
-### 7.2 受限用户仍能选中“全部空间”
+### 7.2 后端 Long 字段序列化成字符串，前端 `new Date` 报 Invalid Date
+
+**现象**：事件记录接口有数据，但表格空白，控制台抛 `RangeError: Invalid time value`。  
+**原因**：全局 Jackson 把 `Long` 序列化为字符串，事件 `ts` 是 `"1794655001109"`；`new Date("1794...")` 在浏览器里可能判为 Invalid Date。  
+**修复**：前端先 `Number(row.ts)` 再构造 Date，类型声明改为 `ts: string`。
+
+### 7.3 受限用户仍能选中“全部空间”
 
 **现象**：空间受限账号切到全部空间，接口 403 或看到空数据。  
 **修复**：空间树接口只返回可见子树；前端在 `ensureLoaded` 后校正失效选择，登录后拉 `/auth/me` 同步最新数据范围。

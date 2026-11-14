@@ -51,7 +51,10 @@ class VirtualDevice(threading.Thread):
         self.host = host
         self.port = port
         self.device_id = device_id
+        self.tenant = tenant
         self.device_secret = device_secret
+        self.event_seq = 0
+        self.last_high_temp_event = 0.0
         self.interval = interval
         self.topic = f"{tenant}/{device_id}/thing/property/report"
         self.shadow_topic = f"{tenant}/{device_id}/shadow/update"
@@ -129,6 +132,7 @@ class VirtualDevice(threading.Thread):
                 self._refresh_auth()
             self._drift()
             self._publish_telemetry(seq)
+            self._maybe_publish_event()
             STOP.wait(self.interval)
 
         # 优雅退出：主动上报离线
@@ -155,6 +159,24 @@ class VirtualDevice(threading.Thread):
             },
         }
         self.client.publish(self.topic, json.dumps(payload), qos=1)
+
+    def _maybe_publish_event(self) -> None:
+        """高温事件：每 30 秒最多上报一次，验证物模型 EVENT 链路。"""
+        if self.temperature <= 30 or time.time() - self.last_high_temp_event < 30:
+            return
+        self.last_high_temp_event = time.time()
+        self._publish_event("highTempAlarm", {"temperature": round(self.temperature, 2)})
+
+    def _publish_event(self, identifier: str, params: dict) -> None:
+        self.event_seq += 1
+        payload = {
+            "id": f"evt-{self.device_id}-{self.event_seq}",
+            "ts": int(time.time() * 1000),
+            "params": params,
+        }
+        topic = f"{self.tenant}/{self.device_id}/thing/event/{identifier}/post"
+        self.client.publish(topic, json.dumps(payload), qos=1)
+        print(f"[{self.device_id}] 事件上报 {identifier}: {params}")
 
     def _publish_shadow_report(self, version=None) -> None:
         payload = {

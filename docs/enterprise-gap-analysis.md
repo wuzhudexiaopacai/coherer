@@ -209,8 +209,8 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；Dashboard 口令轮换；**所有基础设施端口收敛到 127.0.0.1**；**Redis requirepass + TDengine 强制口令**；**指标端点要求内部令牌**；WSS 默认与 PG/TD TLS 待补 |
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
-| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 167 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
-| E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理、命令下发与回执已完成**；事件上报、区间聚合、通知渠道、规则版本、OTA 待做 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 172 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
+| E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理、命令下发与回执、事件上报已完成**；区间聚合、通知渠道、规则版本、OTA 待做 |
 | F 生产化 | 🟡 部分完成 | **镜像、Nginx 同源部署、CI 镜像构建推送已完成**；K8s/Helm、HA、备份恢复、压测待做 |
 
 > 复核说明（第二轮单体整改后）：Compose 启动顺序/内部地址、命令物模型校验与幂等限流、Refresh 轮换、告警批量评估、TDengine space tag/保留期、CI 镜像推送均已落地，安全约 8/10、可靠性约 7/10、可观测约 9/10、交付约 7/10；剩余缺口为 **PG/Redis/TDengine TLS 与 WSS 默认**、**Kafka/水位/HA 与压测**、**Testcontainers/E2E**、**多租户与事件/OTA**。

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.command.service.CommandPublisher;
 import com.github.wuzhudexiaopacai.command.service.CommandReplyService;
 import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
+import com.github.wuzhudexiaopacai.event.service.EventService;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -47,11 +48,13 @@ public class MqttGateway implements CommandPublisher {
     private static final String SHADOW_REPORT_TOPIC = "$share/coherer/+/+/shadow/report";
     private static final String STATUS_TOPIC = "$share/coherer/+/+/status";
     private static final String COMMAND_REPLY_TOPIC = "$share/coherer/+/+/thing/service/reply";
+    private static final String EVENT_TOPIC = "$share/coherer/+/+/thing/event/+/post";
 
     private final TelemetryService telemetryService;
     private final ShadowService shadowService;
     private final DeviceStatusService deviceStatusService;
     private final CommandReplyService commandReplyService;
+    private final EventService eventService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -187,9 +190,9 @@ public class MqttGateway implements CommandPublisher {
         try {
             client.subscribe(
                     new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC,
-                            COMMAND_REPLY_TOPIC},
-                    new int[]{1, 1, 1, 1});
-            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执");
+                            COMMAND_REPLY_TOPIC, EVENT_TOPIC},
+                    new int[]{1, 1, 1, 1, 1});
+            log.info("已共享订阅：遥测 / 影子上报 / 设备状态 / 命令回执 / 设备事件");
         } catch (MqttException e) {
             log.error("共享订阅失败: {}", e.getMessage());
         }
@@ -254,6 +257,10 @@ public class MqttGateway implements CommandPublisher {
                 && "service".equals(levels[3]) && "reply".equals(levels[4])) {
             return "command-reply";
         }
+        if (levels.length == 6 && "thing".equals(levels[2])
+                && "event".equals(levels[3]) && "post".equals(levels[5])) {
+            return "event";
+        }
         return null;
     }
 
@@ -272,6 +279,11 @@ public class MqttGateway implements CommandPublisher {
                 case "status" -> deviceStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));
                 case "command-reply" -> commandReplyService.onReply(tenantId, deviceId, payload);
+                case "event" -> {
+                    String[] levels = topic.split("/");
+                    eventService.ingest(tenantId, deviceId, levels[4], payload);
+                    deviceStatusService.heartbeat(deviceId);
+                }
                 default -> {
                 }
             }

@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, Edit, Plus, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../api'
-import type { CommandRecord, Device, Shadow, Telemetry, ThingModel } from '../api/types'
+import type { CommandRecord, Device, DeviceEvent, Shadow, Telemetry, ThingModel } from '../api/types'
 import MultiSeriesChart from '../components/MultiSeriesChart.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
@@ -24,6 +24,7 @@ const device = ref<Device | null>(null)
 const telemetry = ref<Telemetry[]>([])
 const shadow = ref<Shadow | null>(null)
 const commands = ref<CommandRecord[]>([])
+const events = ref<DeviceEvent[]>([])
 const services = ref<ThingModel[]>([])
 const loading = ref(true)
 const tab = ref('realtime')
@@ -107,6 +108,15 @@ async function loadCommands() {
     commands.value = await api.listCommands(businessId.value, 20)
   } catch {
     commands.value = []
+  }
+}
+
+async function loadEvents() {
+  if (!businessId.value) return
+  try {
+    events.value = await api.deviceEvents(businessId.value, 20)
+  } catch {
+    events.value = []
   }
 }
 
@@ -195,7 +205,13 @@ onMounted(async () => {
   await Promise.all([productStore.ensureLoaded(), spaceStore.ensureLoaded()])
   await loadDevice()
   if (device.value) {
-    await Promise.all([loadTelemetry(), loadShadow(), loadCommands(), loadServices()])
+    await Promise.all([
+      loadTelemetry(),
+      loadShadow(),
+      loadCommands(),
+      loadServices(),
+      loadEvents()
+    ])
     unsubscribeRealtime = subscribeRealtime(
       `default/${device.value.deviceId}/thing/property/report`,
       (_topic, payload) => handleRealtime(payload)
@@ -456,6 +472,42 @@ async function refreshAll() {
               </el-table>
             </div>
           </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="事件记录" name="events">
+          <div class="chart-head">
+            <div>
+              <h3>设备事件</h3>
+              <p class="tiny">按物模型 EVENT 校验 · eventId 幂等 · 最近 20 条</p>
+            </div>
+            <el-button text :icon="Refresh" @click="loadEvents">刷新</el-button>
+          </div>
+          <el-table :data="events" size="large">
+            <el-table-column label="事件时间" width="190">
+              <template #default="{ row }">
+                {{ fmtDateTime(new Date(Number(row.ts)).toISOString()) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="事件" min-width="140" prop="identifier" />
+            <el-table-column label="参数" min-width="320">
+              <template #default="{ row }">
+                <span v-for="(value, key) in row.params" :key="key" class="param-chip">
+                  <em>{{ key }}</em>{{ value }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="事件 ID" width="220">
+              <template #default="{ row }">
+                <span class="mono tiny">{{ row.eventId || '—' }}</span>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <div class="empty-state">
+                <p>暂无事件</p>
+                <span class="tiny">设备上报物模型事件后会在这里展示</span>
+              </div>
+            </template>
+          </el-table>
         </el-tab-pane>
 
         <el-tab-pane label="历史数据" name="history">

@@ -20,7 +20,8 @@ import type {
   UserInfo,
   UserItem,
   CommandRecord,
-  AuditLogItem
+  AuditLogItem,
+  DeviceEvent
 } from './types'
 
 export const api = {
@@ -139,6 +140,13 @@ export const api = {
     request<void>({ url: `/users/${id}/reset-password`, method: 'post', data: { password } }),
 
   deleteUser: (id: string) => request<void>({ url: `/users/${id}`, method: 'delete' }),
+
+  deviceEvents: (deviceId: string, limit = 20) =>
+    request<DeviceEvent[]>({
+      url: `/devices/${deviceId}/events`,
+      method: 'get',
+      params: { limit }
+    }),
 
   sendCommand: (deviceId: string, body: { identifier: string; params?: Record<string, unknown> }) =>
     request<CommandRecord>({ url: `/devices/${deviceId}/commands`, method: 'post', data: body }),
