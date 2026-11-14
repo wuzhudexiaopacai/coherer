@@ -240,6 +240,17 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **原因**：`save(PENDING) → publish → updateById(SENT)`，设备回执可能在中间把状态改成 SUCCESS。  
 **修复**：改为条件更新 `where status=PENDING`；影响 0 行时重新读取数据库，不覆盖回执结果。
 
+### 8.3 命令缺少物模型校验/幂等/限流
+
+**现象**：任意 identifier 都能下发，重复点击会重复执行，单设备可被刷。  
+**修复**：按产品 `SERVICE` 定义校验 identifier 与参数类型；`clientRequestId` + 唯一索引实现幂等；Redis 计数 30 次/分钟限流。
+
+### 8.4 TDengine 增加 tag 后旧子表写入失败
+
+**现象**：`ALTER STABLE ADD TAG space_id` 后，旧子表标签数量不一致。  
+**修复**：升级时按设备 `ALTER TABLE ... SET TAG space_id = ?` 回填；新写入统一带 4 个 TAG。  
+**验证**：`DESCRIBE` 显示 space_id TAG，查询 `select distinct space_id` 有值。
+
 ### 8.2 PENDING 永久卡死
 
 **原因**：进程在保存后、发布前崩溃；超时巡检只处理 SENT。  
@@ -266,6 +277,11 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 | `b78489e` | 前端 Vitest |
 | `4306579` | 命令下发 |
 | `26afbaf` | 审计页面 |
+| `a170681` | Compose 启动顺序/内部地址/健康检查 |
+| `16f1de3` | 命令物模型校验/幂等/限流 |
+| `e19db8d` | Refresh Token 轮换/重放拒绝 |
+| `d493974` | 告警活动集合批量读取 |
+| `f1f42a7` | TDengine space_id tag/保留期 |
 
 ## 10. 仍建议优先处理
 
@@ -273,4 +289,5 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 2. 命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流
 3. 调度线程池显式配置，遥测 flush 与巡检隔离
 4. ~~后端/前端镜像与 Nginx 同源部署~~（已完成并验证）
+5. ~~CI 镜像构建与推送~~（已加入 GHCR job，需推送到 GitHub 后验证）
 5. Testcontainers 集成测试与 E2E
