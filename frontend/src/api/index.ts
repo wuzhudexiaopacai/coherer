@@ -17,7 +17,8 @@ import type {
   Telemetry,
   ThingModel,
   TrendPoint,
-  UserInfo
+  UserInfo,
+  UserItem
 } from './types'
 
 export const api = {
@@ -104,6 +105,27 @@ export const api = {
     spaceId?: string
   }) =>
     request<RegisterResult[]>({ url: '/devices', method: 'post', data: body }),
+
+  listUsers: (params: { current?: number; size?: number; keyword?: string } = {}) =>
+    request<PageResult<UserItem>>({ url: '/users', method: 'get', params }),
+
+  createUser: (body: {
+    username: string
+    password: string
+    nickname: string
+    role: string
+    spaceId?: string | null
+  }) => request<UserItem>({ url: '/users', method: 'post', data: body }),
+
+  updateUser: (
+    id: string,
+    body: { nickname?: string; role?: string; spaceId?: string | number | null; status?: string }
+  ) => request<UserItem>({ url: `/users/${id}`, method: 'put', data: body }),
+
+  resetUserPassword: (id: string, password: string) =>
+    request<void>({ url: `/users/${id}/reset-password`, method: 'post', data: { password } }),
+
+  deleteUser: (id: string) => request<void>({ url: `/users/${id}`, method: 'delete' }),
 
   deviceTelemetry: (deviceId: string, limit = 60) =>
     request<Telemetry[]>({

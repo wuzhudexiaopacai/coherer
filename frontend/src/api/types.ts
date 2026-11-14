@@ -172,3 +172,13 @@ export interface SpaceNode {
   createdAt?: string
   children: SpaceNode[]
 }
+
+export interface UserItem {
+  id: string
+  username: string
+  nickname: string
+  role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
+  spaceId?: string | null
+  status: 'ACTIVE' | 'DISABLED'
+  createdAt?: string
+}

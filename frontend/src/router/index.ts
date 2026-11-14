@@ -9,6 +9,7 @@ const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
 const ProductsView = () => import('../views/ProductsView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
+const UsersView = () => import('../views/UsersView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -58,6 +59,12 @@ const router = createRouter({
           name: 'spaces',
           component: SpacesView,
           meta: { title: '空间管理', subtitle: '项目 / 区域 / 楼栋 / 楼层统一空间树' }
+        },
+        {
+          path: 'users',
+          name: 'users',
+          component: UsersView,
+          meta: { title: '用户管理', subtitle: '账号 · 角色 · 数据范围', adminOnly: true }
         }
       ]
     }
@@ -72,6 +79,15 @@ router.beforeEach((to) => {
   }
   if (!token) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  // 管理页仅 ADMIN 可进；服务端仍会二次校验
+  if (to.meta.adminOnly) {
+    try {
+      const user = JSON.parse(localStorage.getItem('coherer.user') || '{}')
+      if (user.role !== 'ADMIN') return '/'
+    } catch {
+      return '/'
+    }
   }
   return true
 })

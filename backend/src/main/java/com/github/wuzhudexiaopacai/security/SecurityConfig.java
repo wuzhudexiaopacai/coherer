@@ -51,6 +51,7 @@ public class SecurityConfig {
                                 "/api/ping", "/actuator/health", "/actuator/health/**",
                                 "/actuator/prometheus", "/internal/**").permitAll()
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/**").hasRole("ADMIN")
                         // RBAC：只读角色仅允许 GET；写操作要求 ADMIN / OPERATOR
                         .requestMatchers(HttpMethod.GET, "/api/**")
                         .hasAnyRole("ADMIN", "OPERATOR", "VIEWER")

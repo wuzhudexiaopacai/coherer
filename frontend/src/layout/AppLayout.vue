@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Box, Fold, Monitor, Odometer, OfficeBuilding } from '@element-plus/icons-vue'
+import { Bell, Box, Fold, Monitor, Odometer, OfficeBuilding, User } from '@element-plus/icons-vue'
 import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
 import { useAuthStore } from '../stores/auth'
 import { useSpaceStore } from '../stores/spaces'
@@ -98,6 +98,15 @@ watch(
         <router-link to="/spaces" class="nav-item" active-class="active">
           <el-icon><OfficeBuilding /></el-icon>
           <span>空间管理</span>
+        </router-link>
+        <router-link
+          v-if="auth.user?.role === 'ADMIN'"
+          to="/users"
+          class="nav-item"
+          active-class="active"
+        >
+          <el-icon><User /></el-icon>
+          <span>用户管理</span>
         </router-link>
       </nav>
 
