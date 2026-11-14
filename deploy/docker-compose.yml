@@ -1,16 +1,19 @@
 name: coherer
 
+# 开发编排：所有基础设施端口仅绑定 127.0.0.1，避免在局域网/公网暴露。
+# 生产环境请通过反向代理（443）暴露前端与后端，MQTT 仅暴露 8883，其余走内网。
+
 services:
   emqx:
     image: emqx/emqx:5.8.3
     container_name: coherer-emqx
     restart: unless-stopped
     ports:
-      - "1883:1883"     # MQTT
-      - "8883:8883"     # MQTT over TLS
-      - "8083:8083"     # MQTT over WebSocket（前端实时数据）
-      - "8084:8084"     # MQTT over WSS
-      - "18083:18083"   # 管理控制台
+      - "127.0.0.1:1883:1883"     # MQTT（明文，仅本机调试）
+      - "127.0.0.1:8883:8883"     # MQTT over TLS
+      - "127.0.0.1:8083:8083"     # MQTT over WebSocket（前端实时数据）
+      - "127.0.0.1:8084:8084"     # MQTT over WSS
+      - "127.0.0.1:18083:18083"   # 管理控制台
     environment:
       # HTTP 认证：回调宿主机后端（设备 HMAC 签名 / 后端服务账号）
       EMQX_AUTHENTICATION: |
@@ -85,7 +88,7 @@ services:
       POSTGRES_USER: coherer
       POSTGRES_PASSWORD: ${COHERER_DB_PASSWORD:?COHERER_DB_PASSWORD is required, see deploy/.env.example}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -98,36 +101,72 @@ services:
     image: redis:7-alpine
     container_name: coherer-redis
     restart: unless-stopped
+    # 必须设置口令：Redis 无认证时任何能访问端口的进程都可读写全部缓存
+    command:
+      - "redis-server"
+      - "--requirepass"
+      - "${COHERER_REDIS_PASSWORD:?COHERER_REDIS_PASSWORD is required, see deploy/.env.example}"
+      - "--appendonly"
+      - "yes"
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$COHERER_REDIS_PASSWORD --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 5
+    environment:
+      COHERER_REDIS_PASSWORD: ${COHERER_REDIS_PASSWORD}
 
   tdengine:
     image: tdengine/tdengine:3.3.6.0
     container_name: coherer-tdengine
     restart: unless-stopped
     ports:
-      - "6030:6030"     # native
-      - "6041:6041"     # REST / WebSocket（JDBC 走这里）
+      - "127.0.0.1:6030:6030"     # native（仅本机调试）
+      - "127.0.0.1:6041:6041"     # REST / WebSocket（JDBC 走这里）
     volumes:
       - td-data:/var/lib/taos
       - td-log:/var/log/taos
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 6041"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # 一次性任务：把 TDengine root 默认口令改为强口令（可重复执行）
+  tdengine-init:
+    image: curlimages/curl:8.10.1
+    container_name: coherer-tdengine-init
+    restart: "no"
+    depends_on:
+      tdengine:
+        condition: service_started
+    environment:
+      COHERER_TDENGINE_PASSWORD: ${COHERER_TDENGINE_PASSWORD:?COHERER_TDENGINE_PASSWORD is required, see deploy/.env.example}
+      TD_HOST: tdengine
+    volumes:
+      - ./tdengine/init-root-password.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
 
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: coherer-prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
+    environment:
+      # 指标端点需要内部令牌；entrypoint 注入到临时配置，令牌不落仓库
+      COHERER_INTERNAL_TOKEN: ${COHERER_INTERNAL_TOKEN:?COHERER_INTERNAL_TOKEN is required, see deploy/.env.example}
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./prometheus/entrypoint.sh:/entrypoint.sh:ro
+      - prometheus-data:/prometheus
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -138,7 +177,7 @@ services:
     container_name: coherer-alertmanager
     restart: unless-stopped
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
@@ -151,7 +190,7 @@ services:
     container_name: coherer-grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in deploy/.env}
@@ -175,3 +214,4 @@ volumes:
   td-log:
   alertmanager-data:
   grafana-data:
+  prometheus-data:

@@ -9,21 +9,33 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/** 保护 EMQX 回调的内部接口：要求 X-Internal-Token 共享令牌。 */
+/**
+ * 保护内部端点：要求 X-Internal-Token 共享令牌。
+ *
+ * <p>受保护路径包括 EMQX 认证/ACL 回调（{@code /internal/**}）与 Prometheus 指标
+ * （{@code /actuator/prometheus}）。指标端点包含 URI、错误率等运行信息，不应匿名可读。</p>
+ */
 public class InternalTokenFilter extends OncePerRequestFilter {
 
     private static final String HEADER = "X-Internal-Token";
+    private static final String PROMETHEUS_PATH = "/actuator/prometheus";
 
     private final byte[] expectedToken;
+    private final boolean protectMetrics;
 
     public InternalTokenFilter(String expectedToken) {
+        this(expectedToken, true);
+    }
+
+    public InternalTokenFilter(String expectedToken, boolean protectMetrics) {
         this.expectedToken = expectedToken.getBytes(StandardCharsets.UTF_8);
+        this.protectMetrics = protectMetrics;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        if (!request.getRequestURI().startsWith("/internal/")) {
+        if (!protectedPath(request)) {
             filterChain.doFilter(request, response);
             return;
         }
@@ -37,5 +49,13 @@ public class InternalTokenFilter extends OncePerRequestFilter {
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private boolean protectedPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        if (uri.startsWith("/internal/")) {
+            return true;
+        }
+        return protectMetrics && PROMETHEUS_PATH.equals(uri);
     }
 }

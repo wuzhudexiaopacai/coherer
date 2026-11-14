@@ -15,5 +15,9 @@ alerting:
 scrape_configs:
   - job_name: coherer-backend
     metrics_path: /actuator/prometheus
+    # 指标端点要求内部令牌（见 InternalTokenFilter）；令牌由 entrypoint 注入
+    http_headers:
+      X-Internal-Token:
+        values: ["__COHERER_INTERNAL_TOKEN__"]
     static_configs:
       - targets: ["host.docker.internal:8081"]

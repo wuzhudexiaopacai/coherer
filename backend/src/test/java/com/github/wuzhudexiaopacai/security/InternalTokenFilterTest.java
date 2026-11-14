@@ -64,4 +64,44 @@ class InternalTokenFilterTest {
 
         assertTrue(invoked.get());
     }
+
+    @Test
+    void prometheusEndpoint_withoutToken_returns401() throws Exception {
+        InternalTokenFilter filter = new InternalTokenFilter(TOKEN);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/actuator/prometheus");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean invoked = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (req, res) -> invoked.set(true));
+
+        assertEquals(401, response.getStatus());
+        assertFalse(invoked.get());
+    }
+
+    @Test
+    void prometheusEndpoint_withToken_passes() throws Exception {
+        InternalTokenFilter filter = new InternalTokenFilter(TOKEN);
+        MockHttpServletRequest request =
+                new MockHttpServletRequest("GET", "/actuator/prometheus");
+        request.addHeader("X-Internal-Token", TOKEN);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean invoked = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (req, res) -> invoked.set(true));
+
+        assertTrue(invoked.get());
+    }
+
+    @Test
+    void healthEndpoint_isNotProtected() throws Exception {
+        InternalTokenFilter filter = new InternalTokenFilter(TOKEN);
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/health");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean invoked = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (req, res) -> invoked.set(true));
+
+        assertTrue(invoked.get());
+    }
 }

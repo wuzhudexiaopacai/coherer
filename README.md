@@ -62,11 +62,14 @@ cp deploy/.env.example deploy/.env
 cd deploy/certs && ./gen-certs.sh && cd ../..
 
 # 1. 启动基础设施（EMQX + PostgreSQL + Redis + TDengine + Prometheus + Grafana）
+#    所有端口仅绑定 127.0.0.1；Redis/TDengine 口令来自 deploy/.env，
+#    tdengine-init 任务会在首次启动时把 root 默认口令改为 COHERER_TDENGINE_PASSWORD
 cd deploy && docker compose up -d
 
 # 2. 启动后端
 cd ../backend && mvn spring-boot:run
-# 健康检查: http://localhost:8081/actuator/health
+# 健康检查: http://localhost:8081/actuator/health（匿名可访问）
+# 指标端点: http://localhost:8081/actuator/prometheus（需 X-Internal-Token）
 
 # 3. 注册演示设备并生成凭证（EMQX 已开启签名认证，匿名连接会被拒绝）
 cd ../simulator
@@ -101,7 +104,7 @@ npm run dev
 
 | 能力 | 入口 / 说明 |
 |---|---|
-| 指标 | `GET /actuator/prometheus`；Prometheus 已在 Compose 中，抓取目标见 http://localhost:9090/targets |
+| 指标 | `GET /actuator/prometheus`（需 `X-Internal-Token`，Prometheus 已自动带入）；抓取目标见 http://localhost:9090/targets |
 | 看板 | Grafana 自动装配「Coherer IoT 平台总览」（JVM、HTTP QPS/P95、MQTT、遥测、告警、登录失败） |
 | 告警规则 | Prometheus 内置 9 条规则（后端不可达、MQTT 断连、遥测拒绝率/静默、告警风暴、登录爆破、5xx、P95、堆内存），Alertmanager 查看 |
 | 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected` |
