@@ -152,6 +152,50 @@ services:
       - ./tdengine/init-root-password.sh:/init.sh:ro
     entrypoint: ["/bin/sh", "/init.sh"]
 
+  # ---- 应用容器（可选）：docker compose --profile app up -d --build ----
+  backend:
+    profiles: ["app"]
+    build:
+      context: ../backend
+    container_name: coherer-backend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"
+    env_file:
+      - ../backend/.env
+    environment:
+      COHERER_DB_HOST: postgres
+      COHERER_DB_PORT: "5432"
+      COHERER_REDIS_HOST: redis
+      COHERER_TDENGINE_URL: jdbc:TAOS-WS://tdengine:6041
+      COHERER_MQTT_BROKER_HOST: emqx
+      COHERER_MQTT_CA_FILE: /certs/ca.crt
+      # 浏览器与页面同源，经 Nginx 的 /mqtt 反代到 EMQX
+      COHERER_MQTT_WS_URL: ws://localhost:8080/mqtt
+      COHERER_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      tdengine:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+  frontend:
+    profiles: ["app"]
+    build:
+      context: ../frontend
+    container_name: coherer-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+    depends_on:
+      - backend
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: coherer-prometheus

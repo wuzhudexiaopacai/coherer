@@ -91,6 +91,11 @@ python simulator.py --credentials creds.json --tls
 #    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
 #    curl --ssl-no-revoke --cacert ../deploy/certs/ca.crt https://localhost:8443/api/ping
 
+# 可选：整栈容器化（后端 + 前端 + Nginx 同源）
+# 先打包 jar：cd backend && mvn -DskipTests package
+# 再启动：cd ../deploy && docker compose --profile app up -d --build
+# 打开 http://localhost:8080
+
 # 6. 前端看板（另开终端）
 cd frontend
 npm install
@@ -153,3 +158,4 @@ coherer/
 | [docs/design.md](docs/design.md) | 设计图：架构图、时序图、状态机、ER 图、Redis 键设计、接口设计、部署图 |
 | [docs/architecture.md](docs/architecture.md) | 技术方案：选型理由、MQTT 协议设计、里程碑、简历卖点与面试预演 |
 | [docs/enterprise-gap-analysis.md](docs/enterprise-gap-analysis.md) | 企业级差距分析：安全/可靠性/测试/运维评分、P0 阻断项、整改路线图与验收清单 |
+| [docs/pitfalls.md](docs/pitfalls.md) | 踩坑记录：构建、MyBatis-Plus、MQTT、TDengine、认证、可观测性与命令下发 |

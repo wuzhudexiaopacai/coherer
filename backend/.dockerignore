@@ -1,0 +1,8 @@
+target/classes/
+target/test-classes/
+target/surefire-reports/
+target/*.original
+.env
+*.log
+.idea/
+.vscode/

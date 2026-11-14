@@ -5,7 +5,7 @@ spring:
     # 本地开发：从 backend/.env 读取敏感配置（生产由环境变量/密钥管理注入）
     import: optional:file:.env[.properties]
   datasource:
-    url: jdbc:postgresql://localhost:5432/coherer?stringtype=unspecified
+    url: jdbc:postgresql://${COHERER_DB_HOST:localhost}:${COHERER_DB_PORT:5432}/coherer?stringtype=unspecified
     username: coherer
     password: ${COHERER_DB_PASSWORD}
     hikari:
@@ -105,7 +105,7 @@ coherer:
     # 首次启动初始化 admin 用户的口令
     admin-password: ${COHERER_ADMIN_PASSWORD}
   mqtt:
-    broker-host: localhost
+    broker-host: ${COHERER_MQTT_BROKER_HOST:localhost}
     broker-port: ${COHERER_MQTT_BROKER_PORT:1883}
     # 后端 → EMQX 是否启用 TLS（8883）及 CA 证书路径
     tls-enabled: ${COHERER_MQTT_TLS_ENABLED:false}
@@ -121,6 +121,6 @@ coherer:
       ws-url: ${COHERER_MQTT_WS_URL:ws://localhost:8083/mqtt}
       credential-ttl-seconds: 300
   tdengine:
-    url: jdbc:TAOS-WS://localhost:6041
+    url: ${COHERER_TDENGINE_URL:jdbc:TAOS-WS://localhost:6041}
     username: root
     password: ${COHERER_TDENGINE_PASSWORD}
