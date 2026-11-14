@@ -89,8 +89,15 @@ def main() -> None:
     client.on_message = on_message
     client.connect(args.host, args.port, keepalive=30)
     client.loop_start()
+    last_heartbeat = 0.0
     try:
         while True:
+            now = time.time()
+            # 心跳：每 60 秒续期一次在线 TTL，避免只靠 LWT
+            if now - last_heartbeat >= 60:
+                c = client
+                c.publish(status_topic, "online", qos=1)
+                last_heartbeat = now
             time.sleep(1)
             # 时间戳签名 5 分钟有效，定期刷新以便断线重连
             username = str(int(time.time() * 1000))

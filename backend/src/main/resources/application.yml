@@ -77,6 +77,11 @@ logging:
     com.github.wuzhudexiaopacai.internal.auth: DEBUG
 
 coherer:
+  host:
+    # 主机在线标记 TTL：主机定期上报 online 续期
+    online-ttl-seconds: ${COHERER_HOST_ONLINE_TTL_SECONDS:180}
+    online-sweep-interval-ms: ${COHERER_HOST_ONLINE_SWEEP_INTERVAL_MS:60000}
+    online-sweep-initial-delay-ms: ${COHERER_HOST_ONLINE_SWEEP_INITIAL_DELAY_MS:30000}
   device:
     # 设备在线标记 TTL：超过该时长没有任何消息即视为离线
     online-ttl-seconds: ${COHERER_DEVICE_ONLINE_TTL_SECONDS:180}

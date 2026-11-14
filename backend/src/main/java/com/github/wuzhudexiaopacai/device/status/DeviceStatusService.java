@@ -63,8 +63,9 @@ public class DeviceStatusService {
     public void heartbeat(String deviceId) {
         try {
             String key = REDIS_KEY_PREFIX + deviceId;
-            Boolean existed = redisTemplate.expire(key, Duration.ofSeconds(onlineTtlSeconds));
-            if (Boolean.TRUE.equals(existed)) {
+            String state = redisTemplate.opsForValue().get(key);
+            if ("online".equals(state)) {
+                redisTemplate.expire(key, Duration.ofSeconds(onlineTtlSeconds));
                 return;
             }
             markOnline(deviceId);
@@ -133,16 +134,16 @@ public class DeviceStatusService {
         int marked = 0;
         for (Device device : onlineDevices) {
             String deviceId = device.getDeviceId();
-            Boolean alive;
+            String state;
             try {
-                alive = redisTemplate.hasKey(REDIS_KEY_PREFIX + deviceId);
+                state = redisTemplate.opsForValue().get(REDIS_KEY_PREFIX + deviceId);
             } catch (Exception e) {
                 // Redis 整体不可用时无法判断存活，宁可本轮不回收也不能误判全量离线
                 meterRegistry.counter("coherer.device.status.redis_error").increment();
                 log.warn("在线巡检因 Redis 不可用中止: {}", e.getMessage());
                 return;
             }
-            if (Boolean.TRUE.equals(alive)) {
+            if ("online".equals(state)) {
                 continue;
             }
             int updated = deviceMapper.update(null, Wrappers.<Device>lambdaUpdate()

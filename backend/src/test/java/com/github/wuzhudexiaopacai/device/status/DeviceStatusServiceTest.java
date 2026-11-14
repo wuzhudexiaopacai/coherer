@@ -78,6 +78,7 @@ class DeviceStatusServiceTest {
 
     @Test
     void heartbeat_existingMarker_onlyRefreshesTtl() {
+        when(valueOperations.get("coherer:status:device:dev-1")).thenReturn("online");
         when(redisTemplate.expire("coherer:status:device:dev-1", Duration.ofSeconds(180)))
                 .thenReturn(true);
 
@@ -89,7 +90,7 @@ class DeviceStatusServiceTest {
 
     @Test
     void heartbeat_missingMarker_marksOnline() {
-        when(redisTemplate.expire(anyString(), any(Duration.class))).thenReturn(false);
+        when(valueOperations.get("coherer:status:device:dev-1")).thenReturn(null);
         when(deviceMapper.update(any(), any())).thenReturn(1);
 
         service.heartbeat("dev-1");
@@ -101,7 +102,7 @@ class DeviceStatusServiceTest {
 
     @Test
     void heartbeat_redisDown_doesNotThrow() {
-        when(redisTemplate.expire(anyString(), any(Duration.class)))
+        when(valueOperations.get(anyString()))
                 .thenThrow(new RuntimeException("redis down"));
 
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> service.heartbeat("dev-1"));
@@ -110,7 +111,7 @@ class DeviceStatusServiceTest {
 
     @Test
     void heartbeat_markerWriteFails_stillUpdatesDatabase() {
-        when(redisTemplate.expire(anyString(), any(Duration.class))).thenReturn(false);
+        when(valueOperations.get(anyString())).thenReturn(null);
         when(deviceMapper.update(any(), any())).thenReturn(1);
         org.mockito.Mockito.doThrow(new RuntimeException("redis down"))
                 .when(valueOperations).set(anyString(), anyString(), any(Duration.class));
@@ -125,7 +126,7 @@ class DeviceStatusServiceTest {
         Device device = new Device();
         device.setDeviceId("dev-1");
         when(deviceMapper.selectList(any())).thenReturn(List.of(device));
-        when(redisTemplate.hasKey("coherer:status:device:dev-1"))
+        when(valueOperations.get("coherer:status:device:dev-1"))
                 .thenThrow(new RuntimeException("redis down"));
 
         service.sweepStaleOnline();
@@ -138,7 +139,7 @@ class DeviceStatusServiceTest {
         Device device = new Device();
         device.setDeviceId("dev-1");
         when(deviceMapper.selectList(any())).thenReturn(List.of(device));
-        when(redisTemplate.hasKey("coherer:status:device:dev-1")).thenReturn(false);
+        when(valueOperations.get("coherer:status:device:dev-1")).thenReturn(null);
         when(deviceMapper.update(any(), any())).thenReturn(1);
 
         service.sweepStaleOnline();
@@ -152,7 +153,7 @@ class DeviceStatusServiceTest {
         Device device = new Device();
         device.setDeviceId("dev-1");
         when(deviceMapper.selectList(any())).thenReturn(List.of(device));
-        when(redisTemplate.hasKey("coherer:status:device:dev-1")).thenReturn(true);
+        when(valueOperations.get("coherer:status:device:dev-1")).thenReturn("online");
 
         service.sweepStaleOnline();
 
@@ -166,8 +167,8 @@ class DeviceStatusServiceTest {
         Device stale = new Device();
         stale.setDeviceId("dev-stale");
         when(deviceMapper.selectList(any())).thenReturn(List.of(alive, stale));
-        when(redisTemplate.hasKey("coherer:status:device:dev-alive")).thenReturn(true);
-        when(redisTemplate.hasKey("coherer:status:device:dev-stale")).thenReturn(false);
+        when(valueOperations.get("coherer:status:device:dev-alive")).thenReturn("online");
+        when(valueOperations.get("coherer:status:device:dev-stale")).thenReturn(null);
         // 巡检与设备上线并发：update 返回 0 表示已被其他路径更新
         when(deviceMapper.update(any(), any())).thenReturn(0);
 

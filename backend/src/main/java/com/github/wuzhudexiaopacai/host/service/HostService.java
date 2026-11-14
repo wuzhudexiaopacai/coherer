@@ -154,6 +154,7 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
                 return toVO(host, childCounts(List.of(id)));
             }
             host.setStatus("DISABLED");
+            cascadeChildrenOffline(id);
         }
         updateById(host);
         hostLookupService.invalidate(host);
@@ -230,6 +231,22 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
         device.setHostId(null);
         deviceMapper.updateById(device);
         deviceLookupService.invalidate(deviceId);
+    }
+
+    /** 主机禁用时，子设备不应继续保持在线。 */
+    private void cascadeChildrenOffline(Long hostId) {
+        List<Device> children = deviceMapper.selectList(Wrappers.<Device>lambdaQuery()
+                .select(Device::getDeviceId)
+                .eq(Device::getHostId, hostId)
+                .eq(Device::getStatus, "ONLINE"));
+        if (children.isEmpty()) {
+            return;
+        }
+        deviceMapper.update(null, Wrappers.<Device>lambdaUpdate()
+                .eq(Device::getHostId, hostId)
+                .eq(Device::getStatus, "ONLINE")
+                .set(Device::getStatus, "OFFLINE"));
+        children.forEach(device -> deviceLookupService.invalidate(device.getDeviceId()));
     }
 
     private IotHost requireHost(Long id, DataScope scope) {

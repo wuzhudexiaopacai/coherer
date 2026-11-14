@@ -309,6 +309,7 @@ public class MqttGateway implements CommandPublisher {
                 case "host-command-reply" -> {
                     String[] levels = topic.split("/");
                     commandReplyService.onReply(tenantId, levels[3], payload);
+                    hostStatusService.heartbeat(levels[1]);
                 }
                 default -> {
                 }
