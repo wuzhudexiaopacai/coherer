@@ -203,14 +203,14 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | 阶段 | 状态 | 说明 |
 |---|---|---|
 | A1 密钥外置与环境分层 | ✅ 2026-11-14 | `application.yml` 全部改为环境变量；新增 `backend/.env.example`、`deploy/.env.example`；缺少变量启动即失败；Compose 数据库密码从 `deploy/.env` 注入 |
-| A2 用户认证 + RBAC | ✅ 2026-11-14 | Spring Security 无状态 JWT（access + refresh）；ADMIN / OPERATOR / VIEWER 路由级 RBAC；前端登录页、路由守卫、按角色隐藏写操作；46 个单测通过 |
+| A2 用户认证 + RBAC | ✅ 2026-11-14 | Spring Security 无状态 JWT；ADMIN / OPERATOR / VIEWER RBAC；**token_version 支持登出/禁用/改密/降级即时吊销**；前端登录页、路由守卫、按角色隐藏写操作 |
 | A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户；ACL 按用户空间限制订阅；**REST 数据权限已补齐**（DataScope/DeviceAccessService） |
 | A4 限流与 HTTP 语义 | ✅ 2026-11-14 | 登录失败 5 次/5 分钟限流（同用户名+IP，429）；分页 size 上限 100；`BizException` 按 401/403/404/409 返回 |
 | A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；Dashboard 口令轮换；**所有基础设施端口收敛到 127.0.0.1**；**Redis requirepass + TDengine 强制口令**；**指标端点要求内部令牌**；WSS 默认与 PG/TD TLS 待补 |
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
-| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 125 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 149 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
 | E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理、命令下发与回执已完成**；事件上报、区间聚合、通知渠道、规则版本、OTA 待做 |
-| F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
+| F 生产化 | 🟡 部分完成 | **后端/前端镜像与 Nginx 同源部署已完成（app profile）**；K8s/Helm、HA、备份恢复、压测待做 |
 
-> 复核说明（B+ 后）：数据权限、端口收敛、幂等批量、告警一致性、链路追踪、审计补全与 CI 均已落地，安全约 7/10、可靠性约 6/10、可观测约 9/10；剩余缺口为 **PG/Redis/TDengine TLS 与 WSS 默认**、**Kafka/水位/HA 与压测**、**Testcontainers 与前端测试**、**多租户与设备生命周期/命令/OTA**。
+> 复核说明（单体整改后）：数据权限、JWT 即时吊销、命令竞态、Redis 故障降级、平台配置边界、空间/看板缓存、整栈容器化均已落地，安全约 8/10、可靠性约 7/10、可观测约 9/10、交付约 7/10；剩余缺口为 **PG/Redis/TDengine TLS 与 WSS 默认**、**Kafka/水位/HA 与压测**、**Testcontainers/E2E**、**多租户与事件/OTA**。
