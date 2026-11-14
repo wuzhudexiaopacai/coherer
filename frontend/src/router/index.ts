@@ -10,6 +10,7 @@ const ProductsView = () => import('../views/ProductsView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
 const UsersView = () => import('../views/UsersView.vue')
+const AuditLogsView = () => import('../views/AuditLogsView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -65,6 +66,12 @@ const router = createRouter({
           name: 'users',
           component: UsersView,
           meta: { title: '用户管理', subtitle: '账号 · 角色 · 数据范围', adminOnly: true }
+        },
+        {
+          path: 'audit',
+          name: 'audit',
+          component: AuditLogsView,
+          meta: { title: '审计日志', subtitle: '关键操作 · 执行结果 · traceId', adminOnly: true }
         }
       ]
     }

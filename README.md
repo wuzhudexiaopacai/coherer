@@ -111,7 +111,7 @@ npm run dev
 | 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected`、`coherer_telemetry_buffer_size` |
 | 结构化日志 | ECS JSON 输出到控制台；每条日志带 `service.name`、`process.pid`、`traceId`、`spanId` |
 | 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警；span 上报 Zipkin http://localhost:9411 |
-| 审计日志 | 登录、设备注册、产品/物模型、告警确认/关闭、规则与空间变更；ADMIN 通过 `GET /api/audit-logs` 查询，含 traceId、结果、User-Agent、真实客户端 IP |
+| 审计日志 | 登录、设备/产品/物模型、告警、规则、空间、用户与命令等关键操作；ADMIN 可在「审计日志」页面或 `GET /api/audit-logs` 按用户/动作/结果查询，含 traceId、User-Agent、真实客户端 IP |
 | 探针 | `/actuator/health/liveness`（进程存活）、`/actuator/health/readiness`（db/redis/disk） |
 
 ```bash

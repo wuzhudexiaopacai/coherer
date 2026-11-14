@@ -19,7 +19,8 @@ import type {
   TrendPoint,
   UserInfo,
   UserItem,
-  CommandRecord
+  CommandRecord,
+  AuditLogItem
 } from './types'
 
 export const api = {
@@ -106,6 +107,15 @@ export const api = {
     spaceId?: string
   }) =>
     request<RegisterResult[]>({ url: '/devices', method: 'post', data: body }),
+
+  listAuditLogs: (params: {
+    current?: number
+    size?: number
+    username?: string
+    action?: string
+    result?: string
+    traceId?: string
+  } = {}) => request<PageResult<AuditLogItem>>({ url: '/audit-logs', method: 'get', params }),
 
   listUsers: (params: { current?: number; size?: number; keyword?: string } = {}) =>
     request<PageResult<UserItem>>({ url: '/users', method: 'get', params }),

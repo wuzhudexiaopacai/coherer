@@ -197,3 +197,16 @@ export interface CommandRecord {
   sentAt?: string
   repliedAt?: string
 }
+
+export interface AuditLogItem {
+  id: string
+  username: string
+  action: string
+  resource?: string
+  detail?: Record<string, unknown>
+  ip?: string
+  traceId?: string
+  result?: 'SUCCESS' | 'FAILURE'
+  userAgent?: string
+  createdAt: string
+}
