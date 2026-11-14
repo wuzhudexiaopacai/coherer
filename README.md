@@ -93,7 +93,8 @@ python simulator.py --credentials creds.json --tls
 
 # 可选：整栈容器化（后端 + 前端 + Nginx 同源）
 # 先打包 jar：cd backend && mvn -DskipTests package
-# 再启动：cd ../deploy && docker compose --profile app up -d --build
+# 再启动：cd ../deploy &&
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml --profile app up -d --build
 # 打开 http://localhost:8080
 
 # 6. 前端看板（另开终端）

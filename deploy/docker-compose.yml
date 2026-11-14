@@ -184,6 +184,15 @@ services:
         condition: service_healthy
       emqx:
         condition: service_healthy
+      tdengine-init:
+        condition: service_completed_successfully
+    healthcheck:
+      # JRE 镜像无 curl，用 bash /dev/tcp 检查端口存活
+      test: ["CMD-SHELL", "bash -ec 'exec 3<>/dev/tcp/127.0.0.1/8081'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
 
   frontend:
     profiles: ["app"]
@@ -194,7 +203,8 @@ services:
     ports:
       - "127.0.0.1:8080:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   prometheus:
     image: prom/prometheus:v2.55.1

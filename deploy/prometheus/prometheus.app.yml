@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: coherer-compose
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: coherer-backend
+    metrics_path: /actuator/prometheus
+    http_headers:
+      X-Internal-Token:
+        values: ["__COHERER_INTERNAL_TOKEN__"]
+    static_configs:
+      - targets: ["backend:8081"]

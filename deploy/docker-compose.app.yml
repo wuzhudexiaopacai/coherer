@@ -1,0 +1,48 @@
+# 整栈容器化覆盖文件：EMQX 回调与 Prometheus 抓取改用 Compose 内部服务名。
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.app.yml --profile app up -d --build
+services:
+  emqx:
+    environment:
+      EMQX_AUTHENTICATION: |
+        [
+          {
+            enable = true
+            mechanism = password_based
+            backend = http
+            method = post
+            url = "http://backend:8081/internal/auth/mqtt"
+            body {
+              clientid = "$${clientid}"
+              username = "$${username}"
+              password = "$${password}"
+            }
+            headers {
+              "Content-Type" = "application/json"
+              "X-Internal-Token" = "${COHERER_INTERNAL_TOKEN}"
+            }
+          }
+        ]
+      EMQX_AUTHORIZATION__SOURCES: |
+        [
+          {
+            type = http
+            enable = true
+            method = post
+            url = "http://backend:8081/internal/auth/acl"
+            body {
+              clientid = "$${clientid}"
+              username = "$${username}"
+              topic = "$${topic}"
+              action = "$${action}"
+            }
+            headers {
+              "Content-Type" = "application/json"
+              "X-Internal-Token" = "${COHERER_INTERNAL_TOKEN}"
+            }
+          }
+        ]
+
+  prometheus:
+    volumes:
+      - ./prometheus/prometheus.app.yml:/etc/prometheus/prometheus.yml:ro

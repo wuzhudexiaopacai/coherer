@@ -50,14 +50,21 @@ COPY target/coherer-backend-*.jar app.jar
 
 **经验**：部署镜像不应依赖构建期访问外网仓库；CI 负责构建产物。
 
-### 1.6 镜像里跑了旧 jar
+### 1.6 EMQX 的 HOCON 不展开任意环境变量
+
+**现象**：把回调地址写成 `url = "${COHERER_BACKEND_URL}/internal/auth/mqtt"`，EMQX 启动报 `invalid_url {no_scheme}`。  
+**原因**：EMQX 只展开它自己的模板变量（如 `$${clientid}`），不会展开自定义环境变量。  
+**修复**：基础 Compose 用宿主机地址；整栈容器化用 `docker-compose.app.yml` 覆盖完整的认证/ACL 配置块，写死 `http://backend:8081`。  
+**验证**：模拟器经内部回调成功接入，Prometheus target `backend:8081` 为 up。
+
+### 1.7 镜像里跑了旧 jar
 
 **现象**：容器启动仍连接 `localhost:5432`，环境变量没生效。  
 **原因**：修改 `application.yml` 后只重建了镜像，没有重新打包 jar，`COPY target/*.jar` 复制的是旧包。  
 **修复**：先 `mvn package`，再 `docker compose build`。  
 **验证**：容器日志显示 `jdbc:postgresql://postgres:5432/...`。
 
-### 1.7 Git Bash 里 curl 发送中文 JSON 变成非法 UTF-8
+### 1.8 Git Bash 里 curl 发送中文 JSON 变成非法 UTF-8
 
 **现象**：后端报 `JSON parse error: Invalid UTF-8 middle byte 0xcb`。  
 **原因**：Windows 终端按 GBK 传参，服务端按 UTF-8 解析。  
