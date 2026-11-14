@@ -39,6 +39,13 @@ management:
     web:
       exposure:
         include: health,info,metrics,prometheus
+  metrics:
+    distribution:
+      # Grafana P95/P99 面板与延迟告警依赖直方图桶
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
   tracing:
     sampling:
       probability: ${COHERER_TRACING_SAMPLE_RATE:1.0}

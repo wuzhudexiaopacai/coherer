@@ -47,7 +47,7 @@
 | 设备模拟器 | Python + paho-mqtt（万级设备并发模拟） |
 | 压测 | emqtt-bench |
 | 部署 | Docker Compose（开发）→ Kubernetes + Helm（生产） |
-| 监控 | Prometheus + Grafana |
+| 监控 | Prometheus + Grafana + Alertmanager |
 
 ## 快速开始（M1 骨架）
 
@@ -61,7 +61,7 @@ cp deploy/.env.example deploy/.env
 # 0. 生成本地开发证书（自签 CA + 服务端证书，仅首次执行）
 cd deploy/certs && ./gen-certs.sh && cd ../..
 
-# 1. 启动基础设施（EMQX + PostgreSQL + Redis）
+# 1. 启动基础设施（EMQX + PostgreSQL + Redis + TDengine + Prometheus + Grafana）
 cd deploy && docker compose up -d
 
 # 2. 启动后端
@@ -80,6 +80,8 @@ python simulator.py --credentials creds.json --tls
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
 #    EMQX 控制台: http://localhost:18083 (admin / EMQX_DASHBOARD_PASSWORD)
 #    Prometheus: http://localhost:9090 （抓取 /actuator/prometheus）
+#    Grafana: http://localhost:3000 (admin / GRAFANA_ADMIN_PASSWORD)
+#    Alertmanager: http://localhost:9093
 #
 # 可选：HTTPS Profile（本地自签 CA）
 #    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
@@ -100,6 +102,8 @@ npm run dev
 | 能力 | 入口 / 说明 |
 |---|---|
 | 指标 | `GET /actuator/prometheus`；Prometheus 已在 Compose 中，抓取目标见 http://localhost:9090/targets |
+| 看板 | Grafana 自动装配「Coherer IoT 平台总览」（JVM、HTTP QPS/P95、MQTT、遥测、告警、登录失败） |
+| 告警规则 | Prometheus 内置 9 条规则（后端不可达、MQTT 断连、遥测拒绝率/静默、告警风暴、登录爆破、5xx、P95、堆内存），Alertmanager 查看 |
 | 业务指标 | `coherer_telemetry_ingested_total{result}`、`coherer_alarm_triggered_total{level}`、`coherer_auth_login_failures_total`、`coherer_mqtt_connected` |
 | 结构化日志 | ECS JSON 输出到控制台；每条日志带 `service.name`、`process.pid`、`traceId`、`spanId` |
 | 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警评估 |

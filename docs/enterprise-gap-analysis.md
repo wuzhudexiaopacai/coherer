@@ -133,7 +133,9 @@
 - 自定义指标：`coherer.telemetry.ingested{result=ok|rejected|error}`、`coherer.alarm.triggered{level}`、`coherer.auth.login.failures`、`coherer.mqtt.connected`。
 - ECS 结构化 JSON 控制台日志；Brave + Micrometer Tracing，MQTT 入口为每条消息创建 `mqtt.message` span，traceId/spanId 贯穿消费、校验、入库与告警日志。
 - `audit_log`（V10）+ 仅 ADMIN 可查的 `GET /api/audit-logs`；已覆盖登录成功/失败/限流、设备注册、产品与物模型变更、告警确认/关闭、告警规则增删改、空间增删改、影子期望值下发。
-- 待补：Grafana 看板、Prometheus 告警规则、readiness/liveness 分离、慢查询/错误率面板。
+- Grafana 11 自动装配 Prometheus 数据源与「Coherer IoT 平台总览」看板（12 个面板：服务状态、MQTT 连接、遥测速率/拒绝率、REST QPS/P95/P99、JVM 堆与 CPU、告警触发、登录失败、GC 暂停）。
+- Prometheus 9 条告警规则（可用性、遥测拒绝率/静默、告警风暴、登录爆破、5xx、P95、堆内存），Alertmanager 已在 Compose 中，默认仅展示告警。
+- 待补：`readiness/liveness` 探针分离、TDengine/PG 慢查询面板、Alertmanager 通知渠道（webhook/邮件/钉钉）。
 
 ### 阶段 C：可靠性与扩展（1~2 周，与 M3 合并）
 
@@ -164,7 +166,7 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 - [ ] 内部链路 TLS 或网络隔离，Dashboard 无默认口令
 - [x] Prometheus 指标与 trace-id 可用（Grafana 看板待补）
 - [x] 关键操作审计日志可查询（ADMIN）
-- [ ] Grafana 看板与 Prometheus 告警规则
+- [x] Grafana 看板与 Prometheus 告警规则
 - [ ] 告警状态与水位可在多实例间一致
 - [ ] TDengine 批量写入 + 幂等，压测达到目标吞吐
 - [ ] CI 门禁：测试 + 覆盖率 + 镜像扫描通过
@@ -205,10 +207,10 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A3 内部接口与 Web 凭证保护 | ✅ 2026-11-14 | `/internal/**` 校验 `X-Internal-Token`；`/api/mqtt/credentials` 仅登录用户可获取，用户名内嵌 userId/过期时间；ACL 按用户空间（含子空间）限制设备订阅；**REST 接口的数据权限仍待补** |
 | A4 限流与 HTTP 语义 | ✅ 2026-11-14 | 登录失败 5 次/5 分钟限流（同用户名+IP，429）；分页 size 上限 100；`BizException` 按 401/403/404/409 返回 |
 | A5 传输安全 | 🟡 部分完成 | HTTPS Profile（8443，本地 CA）可用；后端→EMQX 走 TLS 8883；EMQX Dashboard 口令已轮换（默认 public 失效）；WSS 地址可配置（信任 CA 后启用）；PG/Redis/TDengine TLS 待补 |
-| B 可观测性 | 🟡 部分完成 | Prometheus 指标、ECS 结构化日志、MQTT→入库 traceId、关键操作审计已上线；Grafana 看板、告警规则、readiness/liveness 待补 |
+| B 可观测性 | 🟡 部分完成 | Prometheus 指标、Grafana 看板、9 条告警规则、ECS 结构化日志、MQTT→入库 traceId、关键操作审计已上线；readiness/liveness 与慢查询面板待补 |
 | C 可靠性/M3 | ⬜ 待开始 | Kafka 分区、幂等、水位、批量写入 |
 | D 测试与 CI | ⬜ 待开始 | Testcontainers、前端测试、覆盖率门禁、Actions |
 | E 功能补齐 | ⬜ 待开始 | 设备启停、事件、区间聚合、通知、规则版本等 |
 | F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
 
-> 复核说明（B 后）：认证、RBAC、内部链路与可观测性已补齐，安全评分约 6/10、可观测性约 7/10；剩余缺口为**按用户/空间的数据权限**、**PG/Redis/TDengine TLS/WSS 信任链**、**Grafana 看板与告警规则**。
+> 复核说明（B 后）：认证、RBAC、内部链路与可观测性已补齐，安全评分约 6/10、可观测性约 8/10；剩余缺口为**按用户/空间的数据权限**、**PG/Redis/TDengine TLS/WSS 信任链**、**readiness/liveness 与慢查询面板**。

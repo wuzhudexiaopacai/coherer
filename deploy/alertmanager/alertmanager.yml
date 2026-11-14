@@ -1,0 +1,14 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: default
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+# 默认接收器不发送通知，仅用于在 Alertmanager UI（:9093）查看告警。
+# 生产环境请补充 webhook_configs / email_configs，或对接钉钉/企微告警转发服务。
+receivers:
+  - name: default

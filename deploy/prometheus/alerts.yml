@@ -1,0 +1,118 @@
+groups:
+  - name: coherer-availability
+    interval: 30s
+    rules:
+      - alert: CohererBackendDown
+        expr: up{job="coherer-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: coherer-backend
+        annotations:
+          summary: "Coherer 后端不可达"
+          description: "Prometheus 已连续 1 分钟无法抓取 {{ $labels.instance }} 的 /actuator/prometheus。"
+
+      - alert: CohererMqttDisconnected
+        expr: coherer_mqtt_connected < 1
+        for: 2m
+        labels:
+          severity: critical
+          service: coherer-backend
+        annotations:
+          summary: "Coherer MQTT 网关未连接"
+          description: "coherer_mqtt_connected=0 已持续 2 分钟，遥测与影子消息将无法消费。"
+
+  - name: coherer-traffic
+    interval: 30s
+    rules:
+      - alert: CohererTelemetryRejectedHigh
+        expr: |
+          (
+            sum(rate(coherer_telemetry_ingested_total{result="rejected"}[5m]))
+            /
+            clamp_min(sum(rate(coherer_telemetry_ingested_total[5m])), 0.001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "遥测校验失败率超过 5%"
+          description: "最近 5 分钟遥测拒绝比例高于 5%，请检查物模型定义或设备上报格式。"
+
+      - alert: CohererTelemetrySilent
+        expr: sum(rate(coherer_telemetry_ingested_total{result="ok"}[10m])) == 0
+        for: 15m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "遥测入库量为 0"
+          description: "最近 10 分钟没有任何遥测成功入库；若为预期（无设备在线）请静默该规则。"
+
+      - alert: CohererAlarmStorm
+        expr: sum(increase(coherer_alarm_triggered_total[5m])) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "告警风暴：5 分钟触发超过 20 条"
+          description: "可能存在设备批量异常或规则阈值配置不当，请检查告警规则与设备状态。"
+
+      - alert: CohererLoginFailureBurst
+        expr: sum(increase(coherer_auth_login_failures_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "登录失败次数异常"
+          description: "5 分钟内登录失败超过 10 次，疑似口令爆破；请结合审计日志排查来源 IP。"
+
+  - name: coherer-http-jvm
+    interval: 30s
+    rules:
+      - alert: CohererHttp5xx
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m]))
+            /
+            clamp_min(sum(rate(http_server_requests_seconds_count[5m])), 0.001)
+          ) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          service: coherer-backend
+        annotations:
+          summary: "REST 接口 5xx 比例超过 1%"
+          description: "最近 5 分钟服务端错误比例高于 1%，请查看日志与 traceId。"
+
+      - alert: CohererHttpP95LatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "REST 接口 P95 延迟超过 1s"
+          description: "最近 5 分钟 HTTP P95 延迟大于 1 秒，请检查慢查询与下游依赖。"
+
+      - alert: CohererJvmHeapHigh
+        expr: |
+          (
+            sum(jvm_memory_used_bytes{area="heap"})
+            /
+            clamp_min(sum(jvm_memory_max_bytes{area="heap"}), 1)
+          ) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          service: coherer-backend
+        annotations:
+          summary: "JVM 堆内存使用率超过 85%"
+          description: "堆内存持续高于 85%，存在 OOM 风险；请检查大查询、缓存与流量峰值。"
