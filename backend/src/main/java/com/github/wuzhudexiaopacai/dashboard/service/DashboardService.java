@@ -1,6 +1,8 @@
 package com.github.wuzhudexiaopacai.dashboard.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.dashboard.vo.OverviewVO;
 import com.github.wuzhudexiaopacai.dashboard.vo.TrendPointVO;
 import com.github.wuzhudexiaopacai.device.entity.Device;
@@ -9,10 +11,12 @@ import com.github.wuzhudexiaopacai.product.mapper.ProductMapper;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import com.github.wuzhudexiaopacai.telemetry.TelemetryTdStore;
 import com.github.wuzhudexiaopacai.telemetry.vo.TelemetryVO;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,23 +34,42 @@ public class DashboardService {
     private final SpaceService spaceService;
     private final TelemetryTdStore telemetryTdStore;
     private final JdbcTemplate tdJdbc;
+    private final Cache<String, OverviewVO> overviewCache;
 
     public DashboardService(DeviceMapper deviceMapper,
                             ProductMapper productMapper,
                             SpaceService spaceService,
                             TelemetryTdStore telemetryTdStore,
-                            @Qualifier("tdengineJdbcTemplate") JdbcTemplate tdJdbc) {
+                            @Qualifier("tdengineJdbcTemplate") JdbcTemplate tdJdbc,
+                            @org.springframework.beans.factory.annotation.Value(
+                                    "${coherer.dashboard.overview-cache-seconds:15}")
+                            long overviewCacheSeconds) {
         this.deviceMapper = deviceMapper;
         this.productMapper = productMapper;
         this.spaceService = spaceService;
         this.telemetryTdStore = telemetryTdStore;
         this.tdJdbc = tdJdbc;
+        this.overviewCache = Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(Math.max(overviewCacheSeconds, 0)))
+                .maximumSize(500)
+                .build();
     }
 
     /**
      * @param spaceIds 服务端解析后的空间范围；null 表示不限制
      */
+    /**
+     * 总览包含 TDengine COUNT(*)，在设备量大时很贵；短缓存 15 秒，
+     * 对看板可接受，也避免多人同时打开页面放大查询。
+     */
     public OverviewVO overview(List<Long> spaceIds) {
+        String key = spaceIds == null ? "__all__"
+                : spaceIds.stream().sorted().map(String::valueOf)
+                        .collect(Collectors.joining(","));
+        return overviewCache.get(key, ignored -> computeOverview(spaceIds));
+    }
+
+    private OverviewVO computeOverview(List<Long> spaceIds) {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return new OverviewVO(0, 0, 0, 0, 0, 0, 0, 0);
         }

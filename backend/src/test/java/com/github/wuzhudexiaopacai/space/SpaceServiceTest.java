@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -68,6 +70,31 @@ class SpaceServiceTest {
 
         assertEquals(new HashSet<>(List.of(2L, 3L)), new HashSet<>(service.descendantIds(2L)));
         assertEquals(new HashSet<>(List.of(1L, 2L, 3L)), new HashSet<>(service.descendantIds(1L)));
+    }
+
+    @Test
+    void descendantIds_isCachedAcrossCalls() {
+        when(spaceMapper.selectList(any())).thenReturn(List.of(
+                space(1L, null, "默认空间", 0),
+                space(2L, 1L, "1 号楼", 1)));
+
+        service.descendantIds(1L);
+        service.descendantIds(1L);
+
+        verify(spaceMapper, times(1)).selectList(any());
+    }
+
+    @Test
+    void create_invalidatesTreeCache() {
+        when(spaceMapper.selectList(any())).thenReturn(List.of(space(1L, null, "默认空间", 0)));
+        SpaceRequest request = new SpaceRequest();
+        request.setName("新空间");
+
+        service.tree();
+        service.create(request);
+        service.tree();
+
+        verify(spaceMapper, times(2)).selectList(any());
     }
 
     @Test

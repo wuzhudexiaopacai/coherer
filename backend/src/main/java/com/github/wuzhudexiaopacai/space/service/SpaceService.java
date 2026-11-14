@@ -2,6 +2,8 @@ package com.github.wuzhudexiaopacai.space.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
@@ -11,6 +13,7 @@ import com.github.wuzhudexiaopacai.space.dto.SpaceUpdateRequest;
 import com.github.wuzhudexiaopacai.space.entity.Space;
 import com.github.wuzhudexiaopacai.space.mapper.SpaceMapper;
 import com.github.wuzhudexiaopacai.space.vo.SpaceNodeVO;
+import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -33,15 +36,34 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
 
     private final DeviceMapper deviceMapper;
 
+    /** 空间树变化不频繁：缓存整表与后代集合，写操作后主动失效。 */
+    private final Cache<String, List<Space>> allSpacesCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(1)
+            .build();
+    private final Cache<Long, List<Long>> descendantCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(2_000)
+            .build();
+
+    private List<Space> allSpaces() {
+        return allSpacesCache.get("all", ignored -> list(Wrappers.<Space>lambdaQuery()
+                .orderByAsc(Space::getSort)
+                .orderByAsc(Space::getId)));
+    }
+
+    private void invalidateSpaceCaches() {
+        allSpacesCache.invalidateAll();
+        descendantCache.invalidateAll();
+    }
+
     public List<SpaceNodeVO> tree() {
         return tree(null);
     }
 
     /** 按数据范围返回空间树：受限用户只能看到自己空间及其子空间。 */
     public List<SpaceNodeVO> tree(DataScope scope) {
-        List<Space> all = list(Wrappers.<Space>lambdaQuery()
-                .orderByAsc(Space::getSort)
-                .orderByAsc(Space::getId));
+        List<Space> all = allSpaces();
         if (scope != null && !scope.unrestricted()) {
             Set<Long> allowed = new HashSet<>(scope.spaceIds());
             all = all.stream().filter(space -> allowed.contains(space.getId())).toList();
@@ -64,6 +86,7 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
         space.setDescription(request.getDescription());
         space.setStatus(request.getStatus() == null ? "ACTIVE" : request.getStatus());
         save(space);
+        invalidateSpaceCaches();
         return toVO(space);
     }
 
@@ -101,6 +124,7 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             space.setStatus(request.getStatus());
         }
         updateById(space);
+        invalidateSpaceCaches();
         return toVO(space);
     }
 
@@ -118,6 +142,7 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             throw new BizException("空间下存在设备，无法删除");
         }
         removeById(id);
+        invalidateSpaceCaches();
     }
 
     /** 含自身的全部空间 id（用于按空间过滤设备/告警）。 */
@@ -125,7 +150,11 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
         if (spaceId == null) {
             return List.of();
         }
-        List<Space> all = list();
+        return descendantCache.get(spaceId, this::computeDescendantIds);
+    }
+
+    private List<Long> computeDescendantIds(Long spaceId) {
+        List<Space> all = allSpaces();
         Map<Long, List<Long>> children = new LinkedHashMap<>();
         for (Space space : all) {
             if (space.getParentId() != null) {
