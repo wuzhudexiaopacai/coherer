@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,5 +60,37 @@ public class DeviceController {
     public ApiResponse<DeviceVO> get(@PathVariable Long id) {
         DataScope scope = dataScopeService.current();
         return ApiResponse.ok(deviceService.get(id, scope));
+    }
+
+    @PostMapping("/{id}/enable")
+    public ApiResponse<DeviceVO> enable(@PathVariable Long id) {
+        DeviceVO vo = deviceService.setEnabled(id, dataScopeService.current(), true);
+        auditLogService.record("DEVICE_ENABLE", "device", Map.of(
+                "id", String.valueOf(id), "deviceId", vo.getDeviceId()));
+        return ApiResponse.ok(vo);
+    }
+
+    @PostMapping("/{id}/disable")
+    public ApiResponse<DeviceVO> disable(@PathVariable Long id) {
+        DeviceVO vo = deviceService.setEnabled(id, dataScopeService.current(), false);
+        auditLogService.record("DEVICE_DISABLE", "device", Map.of(
+                "id", String.valueOf(id), "deviceId", vo.getDeviceId()));
+        return ApiResponse.ok(vo);
+    }
+
+    /** 重置密钥：新密钥仅在本次响应返回一次。 */
+    @PostMapping("/{id}/rotate-secret")
+    public ApiResponse<DeviceRegisterResult> rotateSecret(@PathVariable Long id) {
+        DeviceRegisterResult result = deviceService.rotateSecret(id, dataScopeService.current());
+        auditLogService.record("DEVICE_SECRET_ROTATE", "device", Map.of(
+                "id", String.valueOf(id), "deviceId", result.getDeviceId()));
+        return ApiResponse.ok(result);
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        deviceService.delete(id, dataScopeService.current());
+        auditLogService.record("DEVICE_DELETE", "device", Map.of("id", String.valueOf(id)));
+        return ApiResponse.ok();
     }
 }

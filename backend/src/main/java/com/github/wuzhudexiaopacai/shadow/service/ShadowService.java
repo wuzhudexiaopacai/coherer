@@ -52,6 +52,12 @@ public class ShadowService extends ServiceImpl<DeviceShadowMapper, DeviceShadow>
         return toVO(requireShadow(deviceId));
     }
 
+    /** 设备删除时同步清理影子，避免残留脏数据。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void removeByDeviceId(String deviceId) {
+        remove(Wrappers.<DeviceShadow>lambdaQuery().eq(DeviceShadow::getDeviceId, deviceId));
+    }
+
     /** 设置期望值：合并 desired → 版本 +1 → 发布 MQTT 通知设备（retained，设备上线即收到）。 */
     @Transactional(rollbackFor = Exception.class)
     public ShadowVO updateDesired(String deviceId, ShadowDesiredRequest request) {

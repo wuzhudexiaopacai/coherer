@@ -2,7 +2,7 @@
 import { onMounted, reactive, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Plus, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { Device, RegisterResult } from '../api/types'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -71,6 +71,88 @@ const registerDialog = reactive({
   prefix: 'demo',
   results: [] as RegisterResult[]
 })
+
+/** 重置密钥后仅展示一次的新凭证 */
+const secretDialog = reactive({
+  visible: false,
+  deviceId: '',
+  name: '',
+  secret: ''
+})
+
+async function toggleDevice(row: Device) {
+  const disabling = row.status !== 'DISABLED'
+  try {
+    await ElMessageBox.confirm(
+      disabling
+        ? `禁用后设备密钥立即失效，且无法重新连接 MQTT。确认禁用「${row.name}」？`
+        : `确认启用「${row.name}」？启用后设备可重新接入。`,
+      disabling ? '禁用设备' : '启用设备',
+      { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    if (disabling) {
+      await api.disableDevice(row.id)
+    } else {
+      await api.enableDevice(row.id)
+    }
+    ElMessage.success(disabling ? '设备已禁用' : '设备已启用')
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function rotateSecret(row: Device) {
+  try {
+    await ElMessageBox.confirm(
+      `重置后旧密钥立即失效，设备需使用新密钥重连。确认重置「${row.name}」的密钥？`,
+      '重置设备密钥',
+      { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    const result = await api.rotateDeviceSecret(row.id)
+    secretDialog.deviceId = result.deviceId
+    secretDialog.name = result.name
+    secretDialog.secret = result.deviceSecret
+    secretDialog.visible = true
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function removeDevice(row: Device) {
+  try {
+    await ElMessageBox.confirm(
+      `删除后设备将无法接入，历史遥测保留。确认删除「${row.name}」？`,
+      '删除设备',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.deleteDevice(row.id)
+    ElMessage.success('设备已删除')
+    await load()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+function handleDeviceCommand(command: string, row: Device) {
+  if (command === 'rotate') {
+    void rotateSecret(row)
+  } else if (command === 'delete') {
+    void removeDevice(row)
+  }
+}
 
 function openRegister() {
   registerDialog.productId = productStore.products[0]?.id ?? null
@@ -177,7 +259,7 @@ watch(
         size="large"
         @row-click="openDetail"
       >
-        <el-table-column label="设备" min-width="240">
+        <el-table-column label="设备" min-width="220">
           <template #default="{ row }">
             <div class="device-cell">
               <span class="device-name">{{ row.name }}</span>
@@ -185,34 +267,47 @@ watch(
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="所属产品" min-width="150">
+        <el-table-column label="所属产品" min-width="140">
           <template #default="{ row }">
             <span>{{ productStore.nameOf(row.productId) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="所属空间" min-width="130">
+        <el-table-column label="所属空间" min-width="120">
           <template #default="{ row }">
             <span>{{ spaceStore.nameOf(row.spaceId) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="120">
+        <el-table-column label="状态" width="112">
           <template #default="{ row }">
             <StatusBadge :status="row.status" />
           </template>
         </el-table-column>
-        <el-table-column label="最近在线" width="140">
+        <el-table-column label="最近在线" width="120">
           <template #default="{ row }">
             <span :title="fmtDateTime(row.lastOnlineAt)">{{ fmtRelative(row.lastOnlineAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="170">
+        <el-table-column label="创建时间" width="150">
           <template #default="{ row }">
             <span class="tiny">{{ fmtDateTime(row.createdAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="" width="86" align="right">
-          <template #default>
-            <span class="row-arrow">→</span>
+        <el-table-column v-if="auth.canWrite" label="操作" width="132" align="right">
+          <template #default="{ row }">
+            <div class="row-actions" @click.stop>
+              <el-button size="small" text type="primary" @click="toggleDevice(row)">
+                {{ row.status === 'DISABLED' ? '启用' : '禁用' }}
+              </el-button>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleDeviceCommand(cmd, row)">
+                <el-button size="small" text>更多</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="rotate">重置密钥</el-dropdown-item>
+                    <el-dropdown-item command="delete" divided>删除设备</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
         <template #empty>
@@ -307,6 +402,30 @@ watch(
         >
           注册
         </el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="secretDialog.visible" title="设备密钥已重置" width="520px">
+      <el-alert
+        type="warning"
+        :closable="false"
+        show-icon
+        title="新密钥仅显示一次"
+        description="旧密钥已立即失效，请把新密钥写入设备端；关闭后无法再次查看。"
+        class="secret-alert"
+      />
+      <div class="secret-item">
+        <div class="secret-meta">
+          <span class="mono">{{ secretDialog.deviceId }}</span>
+          <span class="tiny">{{ secretDialog.name }}</span>
+        </div>
+        <div class="secret-row">
+          <code class="mono">{{ secretDialog.secret }}</code>
+          <el-button size="small" text :icon="Plus" @click="copy(secretDialog.secret)">复制</el-button>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="secretDialog.visible = false">完成</el-button>
       </template>
     </el-dialog>
   </div>

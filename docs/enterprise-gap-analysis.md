@@ -210,7 +210,7 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
 | D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 109 个测试 + 打包、前端 type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、前端单测、覆盖率门禁待补 |
-| E 功能补齐 | ⬜ 待开始 | 设备启停、事件、区间聚合、通知、规则版本等 |
+| E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换已完成**；事件上报、区间聚合、通知渠道、规则版本待做 |
 | F 生产化 | ⬜ 待开始 | K8s/Helm、HA、备份恢复、压测 |
 
 > 复核说明（B+ 后）：数据权限、端口收敛、幂等批量、告警一致性、链路追踪、审计补全与 CI 均已落地，安全约 7/10、可靠性约 6/10、可观测约 9/10；剩余缺口为 **PG/Redis/TDengine TLS 与 WSS 默认**、**Kafka/水位/HA 与压测**、**Testcontainers 与前端测试**、**多租户与设备生命周期/命令/OTA**。

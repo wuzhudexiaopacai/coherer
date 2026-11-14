@@ -85,6 +85,18 @@ export const api = {
 
   getDevice: (id: string) => request<Device>({ url: `/devices/${id}`, method: 'get' }),
 
+  enableDevice: (id: string) =>
+    request<Device>({ url: `/devices/${id}/enable`, method: 'post' }),
+
+  disableDevice: (id: string) =>
+    request<Device>({ url: `/devices/${id}/disable`, method: 'post' }),
+
+  rotateDeviceSecret: (id: string) =>
+    request<RegisterResult>({ url: `/devices/${id}/rotate-secret`, method: 'post' }),
+
+  deleteDevice: (id: string) =>
+    request<void>({ url: `/devices/${id}`, method: 'delete' }),
+
   registerDevices: (body: {
     productId: string
     count: number

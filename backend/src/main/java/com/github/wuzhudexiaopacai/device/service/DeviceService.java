@@ -33,6 +33,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     private final SecretCipher secretCipher;
     private final ShadowService shadowService;
     private final SpaceService spaceService;
+    private final DeviceLookupService deviceLookupService;
 
     @Transactional(rollbackFor = Exception.class)
     public List<DeviceRegisterResult> register(DeviceRegisterRequest request, DataScope scope) {
@@ -108,6 +109,55 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     }
 
     public DeviceVO get(Long id, DataScope scope) {
+        return toVO(requireDevice(id, scope));
+    }
+
+    /**
+     * 启用/禁用设备：禁用后 MQTT 认证回调拒绝该设备重新接入。
+     * 启用时置为 INACTIVE，等待设备重新上线。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public DeviceVO setEnabled(Long id, DataScope scope, boolean enabled) {
+        Device device = requireDevice(id, scope);
+        if (enabled) {
+            if (!"DISABLED".equals(device.getStatus())) {
+                return toVO(device);
+            }
+            device.setStatus("INACTIVE");
+        } else {
+            if ("DISABLED".equals(device.getStatus())) {
+                return toVO(device);
+            }
+            device.setStatus("DISABLED");
+        }
+        updateById(device);
+        deviceLookupService.invalidate(device.getDeviceId());
+        return toVO(device);
+    }
+
+    /**
+     * 重置设备密钥：旧密钥立即失效，新密钥仅在本次响应返回一次。
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public DeviceRegisterResult rotateSecret(Long id, DataScope scope) {
+        Device device = requireDevice(id, scope);
+        String secret = Ids.deviceSecret();
+        device.setSecretCipher(secretCipher.encrypt(secret));
+        updateById(device);
+        deviceLookupService.invalidate(device.getDeviceId());
+        return new DeviceRegisterResult(device.getDeviceId(), device.getName(), secret);
+    }
+
+    /** 逻辑删除设备，并清理影子；历史遥测保留用于审计。 */
+    @Transactional(rollbackFor = Exception.class)
+    public void delete(Long id, DataScope scope) {
+        Device device = requireDevice(id, scope);
+        shadowService.removeByDeviceId(device.getDeviceId());
+        removeById(id);
+        deviceLookupService.invalidate(device.getDeviceId());
+    }
+
+    private Device requireDevice(Long id, DataScope scope) {
         Device device = getById(id);
         if (device == null) {
             throw new BizException(404, "设备不存在");
@@ -115,7 +165,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
         if (!scope.allows(device.getSpaceId())) {
             throw new BizException(403, "无权访问该设备");
         }
-        return toVO(device);
+        return device;
     }
 
     private DeviceVO toVO(Device device) {
