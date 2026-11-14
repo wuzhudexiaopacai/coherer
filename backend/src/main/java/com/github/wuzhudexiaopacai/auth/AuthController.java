@@ -5,6 +5,7 @@ import com.github.wuzhudexiaopacai.auth.dto.RefreshRequest;
 import com.github.wuzhudexiaopacai.auth.vo.AuthResponse;
 import com.github.wuzhudexiaopacai.auth.vo.UserInfoVO;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.common.RequestIps;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +26,7 @@ public class AuthController {
     @PostMapping("/login")
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request,
                                            HttpServletRequest httpRequest) {
-        return ApiResponse.ok(authService.login(request, httpRequest.getRemoteAddr()));
+        return ApiResponse.ok(authService.login(request, RequestIps.resolve(httpRequest)));
     }
 
     @PostMapping("/refresh")

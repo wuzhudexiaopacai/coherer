@@ -29,5 +29,13 @@ public class AuditLog {
 
     private String ip;
 
+    /** 链路追踪 ID：与日志/ Zipkin 关联 */
+    private String traceId;
+
+    /** SUCCESS / FAILURE */
+    private String result;
+
+    private String userAgent;
+
     private OffsetDateTime createdAt;
 }

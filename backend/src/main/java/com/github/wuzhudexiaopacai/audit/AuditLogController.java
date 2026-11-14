@@ -22,8 +22,11 @@ public class AuditLogController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "20") long size,
             @RequestParam(required = false) String username,
-            @RequestParam(required = false) String action) {
+            @RequestParam(required = false) String action,
+            @RequestParam(required = false) String result,
+            @RequestParam(required = false) String traceId) {
         return ApiResponse.ok(auditLogService.page(
-                PageParams.current(current), PageParams.size(size, 100), username, action));
+                PageParams.current(current), PageParams.size(size, 100),
+                username, action, result, traceId));
     }
 }

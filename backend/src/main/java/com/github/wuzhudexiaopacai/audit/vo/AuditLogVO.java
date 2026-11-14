@@ -19,5 +19,11 @@ public class AuditLogVO {
 
     private String ip;
 
+    private String traceId;
+
+    private String result;
+
+    private String userAgent;
+
     private OffsetDateTime createdAt;
 }
