@@ -64,7 +64,20 @@ COPY target/coherer-backend-*.jar app.jar
 **修复**：先 `mvn package`，再 `docker compose build`。  
 **验证**：容器日志显示 `jdbc:postgresql://postgres:5432/...`。
 
-### 1.8 Git Bash 里 curl 发送中文 JSON 变成非法 UTF-8
+### 1.8 Nginx 配置打进镜像，改完必须 rebuild
+
+**现象**：修改 `frontend/nginx.conf` 后 `docker compose up -d frontend`，HTTPS 仍不生效、8080 仍返回 200。  
+**原因**：nginx.conf 在镜像构建时 COPY，compose 只重建容器不会重建镜像。  
+**修复**：`docker compose build frontend && docker compose up -d frontend`。
+
+### 1.9 Windows curl 校验自签证书报吊销未知
+
+**现象**：`curl --cacert ca.crt https://localhost:8443` 报证书验证失败。  
+**原因**：Git Bash 的 curl 使用 Schannel，不认 PEM CA/吊销列表。  
+**修复**：加 `--ssl-no-revoke`，或改用 OpenSSL 验证：`openssl s_client -CAfile ca.crt -connect localhost:8443`。  
+**验证**：`Verify return code: 0 (ok)`。
+
+### 1.10 Git Bash 里 curl 发送中文 JSON 变成非法 UTF-8
 
 **现象**：后端报 `JSON parse error: Invalid UTF-8 middle byte 0xcb`。  
 **原因**：Windows 终端按 GBK 传参，服务端按 UTF-8 解析。  
@@ -171,7 +184,13 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **当前状态**：已记录为待办，写入前应校验长度并拒绝超限。  
 **经验**：时序库泛化 JSON 只适合 M2；生产应按物模型建属性列。
 
-### 4.3 Docker 内 taosAdapter 认证
+### 4.3 taosdump 输出目录必须预先存在
+
+**现象**：`taosdump ... -o /tmp/tddump` 报 `/tmp/tddump/ is not exist!`。  
+**修复**：先 `mkdir -p /tmp/tddump`，再执行 dump。  
+**备份脚本**：`deploy/scripts/backup.sh` 已处理，并对目录做 `find -type f` 校验和，避免 `sha256sum` 对目录报错。
+
+### 4.4 Docker 内 taosAdapter 认证
 
 **现象**：REST 错误口令返回 HTTP 200，但 body 是 `{"code":855,"desc":"Authentication failure"}`。  
 **修复**：判断 body 的 `code`，不要只看 HTTP 状态码。
@@ -287,7 +306,20 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **做法**：主机 clientId 以 `host_` 开头，认证查 `iot_host`；ACL 仅允许 `{tenant}/{hostId}/host/#` 与 `{tenant}/{hostId}/sub/#`。  
 **验证**：主机可订阅子设备命令、发布回执；跨主机前缀被拒绝。
 
-## 10. 提交索引
+## 10. TLS 与备份
+
+### 10.1 PostgreSQL 私钥权限
+
+**现象**：Postgres 报 `private key file has group or world access`。  
+**修复**：容器启动时把证书复制到 `/tmp`，`chown postgres:postgres` 后 `chmod 600`，再启动 postgres。  
+**验证**：`pg_stat_ssl` 中后端连接 `ssl=t`。
+
+### 10.2 备份校验和不能包含目录
+
+**现象**：`sha256sum ./*` 对 `tdengine/` 目录报错，导致脚本中断。  
+**修复**：`find . -maxdepth 1 -type f -exec sha256sum {} + | sort > SHA256SUMS`。
+
+## 11. 提交索引
 
 | 提交 | 内容 |
 |---|---|

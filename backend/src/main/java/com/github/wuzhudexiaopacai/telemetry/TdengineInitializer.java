@@ -67,14 +67,16 @@ public class TdengineInitializer implements InitializingBean {
 
     /** 旧库升级：stb_telemetry 没有 space_id tag 时补列并回填已有子表。 */
     private void ensureSpaceTag() {
-        if (hasSpaceTag()) {
-            return;
-        }
         try {
             jdbc.execute("ALTER STABLE coherer.stb_telemetry ADD TAG space_id BIGINT");
             log.info("TDengine 超级表已增加 space_id tag");
         } catch (Exception e) {
-            log.warn("增加 space_id tag 失败: {}", e.getMessage());
+            String message = e.getMessage() == null ? "" : e.getMessage();
+            if (message.contains("Tag already exists")) {
+                // 迁移已完成，正常路径，不刷 WARN
+                return;
+            }
+            log.warn("增加 space_id tag 失败: {}", message);
             return;
         }
         List<Device> devices = deviceMapper.selectList(Wrappers.<Device>lambdaQuery()
@@ -95,17 +97,5 @@ public class TdengineInitializer implements InitializingBean {
             }
         }
         log.info("TDengine 子表 space_id 回填完成：{}/{}", updated, devices.size());
-    }
-
-    private boolean hasSpaceTag() {
-        try {
-            List<Map<String, Object>> columns = jdbc.queryForList(
-                    "DESCRIBE coherer.stb_telemetry");
-            return columns.stream().anyMatch(column ->
-                    "space_id".equalsIgnoreCase(String.valueOf(column.get("field"))));
-        } catch (Exception e) {
-            log.warn("读取 TDengine 超级表结构失败: {}", e.getMessage());
-            return false;
-        }
     }
 }

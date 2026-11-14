@@ -42,3 +42,6 @@ deploy/certs/*
 
 # 设备凭证（含设备密钥，不入库）
 simulator/creds*.json
+
+# 备份文件（含数据库数据，不入库）
+deploy/backups/

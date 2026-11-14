@@ -49,6 +49,24 @@ EOF
   echo "[ok] 已生成 ca.crt / ca.key / server.crt / server.key"
 fi
 
+# PostgreSQL 服务端证书（SAN: postgres / localhost / 127.0.0.1）
+if [ ! -f pg.crt ]; then
+  echo "[pg] 生成 PostgreSQL TLS 证书"
+  openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out pg.key
+  openssl req -new -key pg.key -subj "/C=CN/O=Coherer Dev/CN=postgres" -out pg.csr
+  cat > pg.ext <<'EOF'
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:postgres, DNS:localhost, IP:127.0.0.1
+EOF
+  openssl x509 -req -in pg.csr -CA ca.crt -CAkey ca.key -CAcreateserial     -days "$DAYS_LEAF" -sha256 -extfile pg.ext -out pg.crt
+  rm -f pg.csr pg.ext
+  echo "[ok] 已生成 pg.crt / pg.key"
+else
+  echo "[skip] pg.crt 已存在"
+fi
+
 if [ "${1:-}" = "--mtls" ]; then
   if [ -f client.crt ]; then
     echo "[skip] client.crt 已存在"

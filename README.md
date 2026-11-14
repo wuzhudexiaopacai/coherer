@@ -89,13 +89,13 @@ python simulator.py --credentials creds.json --tls
 #
 # 可选：HTTPS Profile（本地自签 CA）
 #    cd backend && mvn spring-boot:run -Dspring-boot.run.profiles=https
-#    curl --ssl-no-revoke --cacert ../deploy/certs/ca.crt https://localhost:8443/api/ping
+#    curl --ssl-no-revoke --cacert ../deploy/certs/ca.crt https://localhost:9443/api/ping
 
 # 可选：整栈容器化（后端 + 前端 + Nginx 同源）
 # 先打包 jar：cd backend && mvn -DskipTests package
 # 再启动：cd ../deploy &&
 #   docker compose -f docker-compose.yml -f docker-compose.app.yml --profile app up -d --build
-# 打开 http://localhost:8080
+# 打开 https://localhost:8443 （HTTP 8080 会 301 跳转；自签证书需信任 deploy/certs/ca.crt）
 
 # 6. 前端看板（另开终端）
 cd frontend
@@ -119,6 +119,8 @@ npm run dev
 | 链路追踪 | MQTT 消息入口创建 `mqtt.message` span，traceId 贯穿校验、入库与告警；span 上报 Zipkin http://localhost:9411 |
 | 审计日志 | 登录、设备/产品/物模型、告警、规则、空间、用户与命令等关键操作；ADMIN 可在「审计日志」页面或 `GET /api/audit-logs` 按用户/动作/结果查询，含 traceId、User-Agent、真实客户端 IP |
 | 探针 | `/actuator/health/liveness`（进程存活）、`/actuator/health/readiness`（db/redis/disk） |
+| HTTPS/WSS | `https://localhost:8443`（HTTP 8080 跳转）；Nginx 443 终结 TLS，`/mqtt` 反代为 WSS |
+| PostgreSQL TLS | 容器内 `sslmode=verify-full`，CA 为 `deploy/certs/ca.crt` |
 
 ```bash
 # 查看审计日志（先登录拿 token）
@@ -129,6 +131,24 @@ curl -H "Authorization: Bearer <accessToken>" \
 curl -H "Authorization: Bearer <accessToken>" \
   "http://localhost:8081/api/audit-logs?result=FAILURE"
 ```
+
+## TLS 与备份恢复
+
+```bash
+# 证书（首次/缺失时生成）：CA、EMQX server、PostgreSQL server
+cd deploy/certs && ./gen-certs.sh
+
+# 信任本地 CA 后访问 HTTPS/WSS（Chrome/Firefox 需导入 ca.crt，或用 curl）
+curl --ssl-no-revoke --cacert deploy/certs/ca.crt https://localhost:8443/api/ping
+
+# 备份：PostgreSQL + Redis + EMQX + TDengine，保留 7 天
+cd deploy && ./scripts/backup.sh
+# 恢复（会覆盖数据，必须显式确认）
+FORCE=1 ./scripts/restore.sh backups/<timestamp>
+```
+
+> Redis/TDengine 官方社区镜像不提供可用的 TLS 监听；当前通过 127.0.0.1 绑定 + 容器网络隔离，
+> 生产建议使用云厂商托管 TLS 实例或 stunnel/服务网格。PG、EMQX、REST/WSS 已完成 TLS。
 
 ## 目录结构
 
