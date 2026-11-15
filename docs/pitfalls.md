@@ -395,6 +395,14 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 更新成功的一方才发布 MQTT；崩溃残留的 PENDING 超过 120 秒后再兜底补发。
 **验证**：单测 `retryDueTask_redispatchesWithNextAttempt`；日志中同一 taskId 每次 attempt 只下发一次。
 
+### 11.11 回退依赖设备当前版本，必须让设备上报版本
+
+**现象**：首次升级任务 `from_version` 为空，成功后无法回退。
+**原因**：平台只在 OTA 成功时写 `device.firmware_version`，升级前不知道设备原版本。
+**修复**：设备影子 reported 中携带 `firmwareVersion`，`ShadowService` 校验格式后写库并失效设备缓存；
+OTA 成功时也用目标固件版本更新设备版本。任务创建时快照 `from_version`。
+**验证**：设备上报 1.0.0 → 升级 1.2.0 → 任务记录 1.0.0→1.2.0 → 回退任务 1.2.0→1.0.0 成功。
+
 ## 12. 提交索引
 
 | 提交 | 内容 |

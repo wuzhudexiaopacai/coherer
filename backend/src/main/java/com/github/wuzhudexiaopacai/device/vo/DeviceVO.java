@@ -20,6 +20,8 @@ public class DeviceVO {
 
     private String status;
 
+    private String firmwareVersion;
+
     private OffsetDateTime lastOnlineAt;
 
     private OffsetDateTime createdAt;

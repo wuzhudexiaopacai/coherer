@@ -221,6 +221,67 @@ class OtaServiceTest {
     }
 
     @Test
+    void rollback_createsRollbackTaskToPreviousVersion() {
+        device.setFirmwareVersion("1.2.0");
+        OtaTask original = new OtaTask();
+        original.setId(77L);
+        original.setDeviceId("dev-1");
+        original.setFirmwareId(10L);
+        original.setStatus("SUCCESS");
+        original.setFromVersion("1.0.0");
+        original.setMaxAttempts(2);
+        when(taskMapper.selectById(77L)).thenReturn(original);
+        Firmware rollback = new Firmware();
+        rollback.setId(11L);
+        rollback.setProductId(1L);
+        rollback.setVersion("1.0.0");
+        rollback.setSizeBytes(64L);
+        rollback.setSha256("b".repeat(64));
+        when(firmwareMapper.selectOne(any())).thenReturn(rollback);
+        when(firmwareService.downloadUrl(rollback, "dev-1")).thenReturn("https://dl/rollback");
+        when(publisher.publishOta(any(), any(), any(), any(), any(), any(), any(), any(),
+                anyLong(), anyInt())).thenReturn(true);
+
+        var vo = service.rollback(77L, scope(100L), "admin");
+
+        assertEquals("ROLLBACK", vo.getTaskType());
+        assertEquals(77L, vo.getRollbackOfTaskId());
+        assertEquals("1.2.0", vo.getFromVersion());
+        assertEquals("1.0.0", vo.getFirmwareVersion());
+        verify(publisher).publishOta("default", "dev-1", null, 88L, 11L, "1.0.0",
+                "https://dl/rollback", "b".repeat(64), 64L, 1);
+    }
+
+    @Test
+    void rollback_withoutFromVersion_isRejected() {
+        OtaTask original = new OtaTask();
+        original.setId(77L);
+        original.setDeviceId("dev-1");
+        original.setStatus("SUCCESS");
+        when(taskMapper.selectById(77L)).thenReturn(original);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.rollback(77L, scope(100L), "admin"));
+        assertEquals(409, exception.getCode());
+    }
+
+    @Test
+    void rollback_missingTargetFirmware_isRejected() {
+        device.setFirmwareVersion("1.2.0");
+        OtaTask original = new OtaTask();
+        original.setId(77L);
+        original.setDeviceId("dev-1");
+        original.setStatus("SUCCESS");
+        original.setFromVersion("1.0.0");
+        when(taskMapper.selectById(77L)).thenReturn(original);
+        when(firmwareMapper.selectOne(any())).thenReturn(null);
+
+        BizException exception = assertThrows(BizException.class,
+                () -> service.rollback(77L, scope(100L), "admin"));
+        assertEquals(409, exception.getCode());
+    }
+
+    @Test
     void start_unknownDevice_isRejected() {
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(null);
 

@@ -272,6 +272,11 @@ watch(
             <span>{{ productStore.nameOf(row.productId) }}</span>
           </template>
         </el-table-column>
+        <el-table-column label="固件版本" width="108">
+          <template #default="{ row }">
+            <span class="mono tiny">{{ row.firmwareVersion ? 'v' + row.firmwareVersion : '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="所属空间" min-width="120">
           <template #default="{ row }">
             <span>{{ spaceStore.nameOf(row.spaceId) }}</span>

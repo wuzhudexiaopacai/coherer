@@ -197,6 +197,7 @@ class VirtualDevice(threading.Thread):
                 "humidity": round(self.humidity, 1),
                 "battery": int(round(self.battery)),
                 "doorOpen": self.door_open,
+                "firmwareVersion": self.firmware_version,
             }
         }
         if version is not None:

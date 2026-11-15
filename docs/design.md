@@ -490,6 +490,7 @@ erDiagram
         varchar name "设备名"
         varchar secret_cipher "AES-GCM 密文"
         varchar status "未激活/在线/离线/禁用"
+        varchar firmware_version "当前固件版本"
         jsonb tags "标签"
         timestamp last_online_at
     }
@@ -562,6 +563,9 @@ erDiagram
         int attempt "当前尝试次数"
         int max_attempts "最大尝试次数"
         timestamp next_attempt_at "下次重试时间"
+        varchar from_version "升级前版本"
+        varchar task_type "NORMAL/ROLLBACK"
+        bigint rollback_of_task_id "回退的原任务"
         timestamp sent_at
         timestamp updated_at "超时巡检基准"
         timestamp finished_at
@@ -667,6 +671,7 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | OTA | `GET /api/ota/download/{firmwareId}` | 设备侧签名下载（无需 JWT，10 分钟有效） |
 | OTA | `POST /api/ota/tasks` | 对单设备创建升级任务并立即下发 |
 | OTA | `GET /api/ota/tasks?deviceId=&limit=` | 设备最近升级任务与进度 |
+| OTA | `POST /api/ota/tasks/{id}/rollback` | 按任务的 from_version 生成 ROLLBACK 任务 |
 | OTA | `GET/POST /api/ota/rollouts` | 灰度批次列表 / 创建（设备、空间、全量目标） |
 | OTA | `GET /api/ota/rollouts/{id}` | 批次详情与成员进度 |
 | OTA | `POST /api/ota/rollouts/{id}/pause` · `/resume` · `/cancel` | 暂停 / 恢复 / 取消灰度 |

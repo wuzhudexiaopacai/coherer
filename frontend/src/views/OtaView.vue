@@ -280,6 +280,26 @@ async function resumeRollout(row: OtaRollout) {
   }
 }
 
+async function rollbackTask(task: OtaTask) {
+  try {
+    await ElMessageBox.confirm(
+      `将设备回退到 v${task.fromVersion}，会创建一个新的升级任务并重新下载固件。确认回退？`,
+      '版本回退',
+      { type: 'warning', confirmButtonText: '回退', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.rollbackOtaTask(task.id)
+    ElMessage.success('回退任务已下发')
+    await loadTasks()
+    await loadRollouts()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
 async function cancelRollout(row: OtaRollout) {
   try {
     await ElMessageBox.confirm(
@@ -675,9 +695,17 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <el-table v-loading="tasksLoading" :data="tasks" size="large">
-        <el-table-column label="固件版本" width="140">
+        <el-table-column label="版本" width="190">
           <template #default="{ row }">
-            <span class="version-pill mono">v{{ row.firmwareVersion || '—' }}</span>
+            <div class="version-cell">
+              <span class="version-pill mono">
+                <template v-if="row.fromVersion">
+                  v{{ row.fromVersion }} → v{{ row.firmwareVersion || '—' }}
+                </template>
+                <template v-else>v{{ row.firmwareVersion || '—' }}</template>
+              </span>
+              <span v-if="row.taskType === 'ROLLBACK'" class="rollback-tag">回退</span>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="118">
@@ -713,6 +741,20 @@ onBeforeUnmount(() => {
         <el-table-column label="详情" min-width="180">
           <template #default="{ row }">
             <span v-if="row.error" class="error-text" :title="row.error">{{ row.error }}</span>
+            <span v-else class="tiny">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="auth.canWrite" label="操作" width="86" align="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.status === 'SUCCESS' && row.fromVersion"
+              size="small"
+              text
+              type="warning"
+              @click="rollbackTask(row)"
+            >
+              回退
+            </el-button>
             <span v-else class="tiny">—</span>
           </template>
         </el-table-column>
@@ -1153,6 +1195,25 @@ onBeforeUnmount(() => {
 
 .rollout-card {
   margin-top: 16px;
+}
+
+.version-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rollback-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: rgba(232, 134, 12, 0.12);
+  color: var(--warning);
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
 .rollout-name-cell {

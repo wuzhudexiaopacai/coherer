@@ -26,6 +26,12 @@ public class OtaTaskVO {
 
     private OffsetDateTime nextAttemptAt;
 
+    private String fromVersion;
+
+    private String taskType;
+
+    private Long rollbackOfTaskId;
+
     private Long rolloutId;
 
     private Integer batchNo;

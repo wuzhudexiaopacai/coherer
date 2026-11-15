@@ -279,6 +279,9 @@ export const api = {
       data: { deviceId, firmwareId, maxAttempts }
     }),
 
+  rollbackOtaTask: (id: string) =>
+    request<OtaTask>({ url: `/ota/tasks/${id}/rollback`, method: 'post' }),
+
   listOtaTasks: (deviceId: string, limit = 20) =>
     request<OtaTask[]>({
       url: '/ota/tasks',

@@ -97,6 +97,13 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
 
     private OtaTask dispatch(Firmware firmware, Device device, String operator,
                              Long rolloutId, Integer batchNo, int maxAttempts) {
+        return dispatch(firmware, device, operator, rolloutId, batchNo, maxAttempts,
+                "NORMAL", null);
+    }
+
+    private OtaTask dispatch(Firmware firmware, Device device, String operator,
+                             Long rolloutId, Integer batchNo, int maxAttempts,
+                             String taskType, Long rollbackOfTaskId) {
         Long active = baseMapper.selectCount(Wrappers.<OtaTask>lambdaQuery()
                 .eq(OtaTask::getDeviceId, device.getDeviceId())
                 .in(OtaTask::getStatus, List.of("PENDING", "SENT", "DOWNLOADING")));
@@ -129,6 +136,9 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         task.setProgress(0);
         task.setAttempt(1);
         task.setMaxAttempts(Math.max(1, maxAttempts));
+        task.setFromVersion(device.getFirmwareVersion());
+        task.setTaskType(taskType);
+        task.setRollbackOfTaskId(rollbackOfTaskId);
         task.setCreatedBy(operator);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
@@ -183,6 +193,47 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
             meterRegistry.counter("coherer.ota.dispatched", "result", "failed").increment();
         }
         return task;
+    }
+
+    /** 将设备回退到任务创建前的固件版本；生成新的 ROLLBACK 任务，不复用原任务。 */
+    public OtaTaskVO rollback(Long taskId, DataScope scope, String operator) {
+        OtaTask original = getById(taskId);
+        if (original == null) {
+            throw new BizException(404, "升级任务不存在");
+        }
+        if (!"SUCCESS".equals(original.getStatus())) {
+            throw new BizException(409, "仅成功完成的任务可以回退");
+        }
+        if (!StringUtils.hasText(original.getFromVersion())) {
+            throw new BizException(409, "该任务没有记录升级前版本，无法回退");
+        }
+        Device device = deviceLookupService.getByDeviceId(original.getDeviceId());
+        if (device == null) {
+            throw new BizException(404, "设备不存在");
+        }
+        if (!scope.allows(device.getSpaceId())) {
+            throw new BizException(403, "无权操作该设备");
+        }
+        if ("DISABLED".equals(device.getStatus())) {
+            throw new BizException(409, "设备已禁用");
+        }
+        if (original.getFromVersion().equals(device.getFirmwareVersion())) {
+            throw new BizException(409, "设备当前已是回退目标版本");
+        }
+        Firmware target = firmwareMapper.selectOne(Wrappers.<Firmware>lambdaQuery()
+                .eq(Firmware::getProductId, device.getProductId())
+                .eq(Firmware::getVersion, original.getFromVersion())
+                .last("limit 1"));
+        if (target == null) {
+            throw new BizException(409, "回退固件 " + original.getFromVersion() + " 不存在或已删除");
+        }
+        int maxAttempts = original.getMaxAttempts() == null ? 1 : original.getMaxAttempts();
+        OtaTask task = dispatch(target, device, operator, null, null, maxAttempts,
+                "ROLLBACK", original.getId());
+        log.info("OTA 回退任务已创建 deviceId={} from={} to={} rollbackOf={}",
+                device.getDeviceId(), device.getFirmwareVersion(), target.getVersion(),
+                original.getId());
+        return toVO(task, target);
     }
 
     public List<OtaTaskVO> recent(String deviceId, int limit, DataScope scope) {

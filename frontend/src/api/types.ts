@@ -27,6 +27,7 @@ export interface Device {
   deviceId: string
   name: string
   status: DeviceStatus
+  firmwareVersion?: string
   lastOnlineAt?: string
   createdAt: string
 }
@@ -266,6 +267,9 @@ export interface OtaTask {
   attempt?: number
   maxAttempts?: number
   nextAttemptAt?: string
+  fromVersion?: string
+  taskType?: 'NORMAL' | 'ROLLBACK'
+  rollbackOfTaskId?: string
   rolloutId?: string
   batchNo?: number
   createdBy?: string

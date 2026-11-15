@@ -209,8 +209,8 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A5 传输安全 | ✅ 2026-11-15 | REST HTTPS + WSS（Nginx 8443，本地 CA）；后端→EMQX TLS 8883；PostgreSQL `ssl=on` + 后端 `sslmode=verify-full`；所有基础设施端口收敛到 127.0.0.1；Redis requirepass + TDengine 强制口令；指标端点要求内部令牌；PG/EMQX/TDengine/Redis 备份恢复脚本已验证 |
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
-| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 261 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
-| E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理、命令下发与回执、事件上报、边缘主机/网关（命令转发 + 遥测/事件/影子/状态代理）、OTA 单设备 + 批量灰度 + 自动重试（设备/空间/全量、分批、暂停/恢复/取消、失败率熔断、退避重试）已完成**；区间聚合、通知渠道、规则版本、OTA 版本回退/对象存储/断点续传待做 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 265 个测试 + 打包、前端 11 个 Vitest + type-check/build、Compose 与 Prometheus 规则校验**；Testcontainers、覆盖率门禁、E2E 待补 |
+| E 功能补齐 | 🟡 部分完成 | **设备启停/删除/密钥轮换、用户管理、命令下发与回执、事件上报、边缘主机/网关（命令转发 + 遥测/事件/影子/状态代理）、OTA 单设备 + 批量灰度 + 自动重试 + 版本回退（设备/空间/全量、分批、暂停/恢复/取消、失败率熔断、退避重试、from_version 回退）已完成**；区间聚合、通知渠道、规则版本、OTA 对象存储/断点续传待做 |
 | F 生产化 | 🟡 部分完成 | **镜像、Nginx 同源部署、CI 镜像构建推送、备份恢复已完成**；K8s/Helm、HA、压测待做 |
 
 > 复核说明（OTA 落地后）：Compose 启动顺序/内部地址、命令物模型校验与幂等限流、Refresh 轮换、告警批量评估、TDengine space tag/保留期、CI 镜像推送、HTTPS/WSS + PG TLS、备份恢复均已落地，安全约 8.5/10、可靠性约 7/10、可观测约 9/10、交付约 7.5/10；剩余缺口为 **Kafka/水位/HA 与压测**、**Testcontainers/E2E/覆盖率门禁**、**多租户、OTA 批量灰度与回滚**。

@@ -35,6 +35,15 @@ public class OtaTask {
     /** 下一次重试时间 */
     private OffsetDateTime nextAttemptAt;
 
+    /** 创建任务时设备当前固件版本 */
+    private String fromVersion;
+
+    /** NORMAL / ROLLBACK */
+    private String taskType;
+
+    /** 回退任务对应的原升级任务 */
+    private Long rollbackOfTaskId;
+
     private Long rolloutId;
 
     private Integer batchNo;

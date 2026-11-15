@@ -10,12 +10,21 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.wuzhudexiaopacai.device.entity.Device;
+import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.ota.entity.Firmware;
 import com.github.wuzhudexiaopacai.ota.entity.OtaTask;
 import com.github.wuzhudexiaopacai.ota.event.OtaTaskFinishedEvent;
+import com.github.wuzhudexiaopacai.ota.mapper.FirmwareMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
@@ -24,36 +33,51 @@ import org.springframework.test.util.ReflectionTestUtils;
 class OtaProgressServiceTest {
 
     private OtaTaskMapper taskMapper;
+    private FirmwareMapper firmwareMapper;
+    private DeviceMapper deviceMapper;
     private ApplicationEventPublisher eventPublisher;
     private OtaProgressService service;
     private OtaTask task;
 
     @BeforeEach
     void setUp() {
+        for (Class<?> type : List.of(OtaTask.class, Firmware.class, Device.class)) {
+            TableInfoHelper.initTableInfo(
+                    new MapperBuilderAssistant(new MybatisConfiguration(), ""), type);
+        }
         taskMapper = mock(OtaTaskMapper.class);
+        firmwareMapper = mock(FirmwareMapper.class);
+        deviceMapper = mock(DeviceMapper.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new OtaProgressService(taskMapper, new ObjectMapper(),
+        service = new OtaProgressService(taskMapper, firmwareMapper, deviceMapper,
+                mock(DeviceLookupService.class), new ObjectMapper(),
                 eventPublisher, new SimpleMeterRegistry());
         ReflectionTestUtils.setField(service, "retryBackoffSeconds", 30L);
         task = new OtaTask();
         task.setId(1L);
+        task.setFirmwareId(10L);
         task.setDeviceId("dev-1");
         task.setStatus("SENT");
         task.setProgress(0);
         task.setAttempt(1);
         task.setMaxAttempts(1);
         task.setRolloutId(50L);
+        Firmware firmware = new Firmware();
+        firmware.setId(10L);
+        firmware.setVersion("1.2.0");
+        when(firmwareMapper.selectById(10L)).thenReturn(firmware);
         when(taskMapper.selectById(1L)).thenReturn(task);
-        when(taskMapper.update(any(), any())).thenReturn(1);
+        when(taskMapper.update(org.mockito.ArgumentMatchers.isNull(), any())).thenReturn(1);
+        when(deviceMapper.update(any(), any())).thenReturn(1);
     }
 
     @Test
     void progress_downloading_updatesPercent() {
         service.onProgress("dev-1", payload("{\"taskId\":1,\"status\":\"DOWNLOADING\",\"progress\":45}"));
 
+        verify(taskMapper).update(org.mockito.ArgumentMatchers.isNull(), any());
         assertEquals("DOWNLOADING", task.getStatus());
         assertEquals(45, task.getProgress());
-        verify(taskMapper).update(any(), any());
     }
 
     @Test
@@ -64,6 +88,7 @@ class OtaProgressServiceTest {
         assertEquals(100, task.getProgress());
         assertNotNull(task.getFinishedAt());
         verify(eventPublisher).publishEvent(any(OtaTaskFinishedEvent.class));
+        verify(deviceMapper).update(any(), any());
     }
 
     @Test

@@ -37,6 +37,9 @@ public class Device {
     /** INACTIVE / ONLINE / OFFLINE / DISABLED */
     private String status;
 
+    /** 设备最近一次上报/升级成功的固件版本 */
+    private String firmwareVersion;
+
     private OffsetDateTime lastOnlineAt;
 
     @TableField(fill = FieldFill.INSERT)

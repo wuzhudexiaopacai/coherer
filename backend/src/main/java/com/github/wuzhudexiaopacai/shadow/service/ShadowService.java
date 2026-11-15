@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
+import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
 import com.github.wuzhudexiaopacai.mqtt.ShadowDesiredUpdatedEvent;
 import com.github.wuzhudexiaopacai.shadow.dto.ShadowDesiredRequest;
@@ -30,6 +31,7 @@ public class ShadowService extends ServiceImpl<DeviceShadowMapper, DeviceShadow>
     private static final Logger log = LoggerFactory.getLogger(ShadowService.class);
 
     private final DeviceLookupService deviceLookupService;
+    private final DeviceMapper deviceMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
@@ -97,6 +99,15 @@ public class ShadowService extends ServiceImpl<DeviceShadowMapper, DeviceShadow>
         } catch (Exception e) {
             log.warn("设备影子上报解析失败 deviceId={} err={}", deviceId, e.getMessage());
             return;
+        }
+
+        Object reportedVersion = reported.get("firmwareVersion");
+        if (reportedVersion instanceof String version
+                && version.matches("[0-9A-Za-z._-]{1,32}")) {
+            deviceMapper.update(null, Wrappers.<Device>lambdaUpdate()
+                    .eq(Device::getDeviceId, deviceId)
+                    .set(Device::getFirmwareVersion, version));
+            deviceLookupService.invalidate(deviceId);
         }
 
         for (int attempt = 0; attempt < 2; attempt++) {

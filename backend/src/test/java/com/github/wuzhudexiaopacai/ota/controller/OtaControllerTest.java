@@ -137,6 +137,24 @@ class OtaControllerTest {
     }
 
     @Test
+    void rollback_returnsRollbackTask() throws Exception {
+        OtaTaskVO vo = new OtaTaskVO();
+        vo.setId(88L);
+        vo.setDeviceId("dev-1");
+        vo.setFirmwareId(11L);
+        vo.setFromVersion("1.2.0");
+        vo.setTaskType("ROLLBACK");
+        vo.setRollbackOfTaskId(77L);
+        when(otaService.rollback(eq(77L), any(DataScope.class), eq("admin"))).thenReturn(vo);
+
+        taskMvc.perform(post("/api/ota/tasks/77/rollback").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.id").value("88"))
+                .andExpect(jsonPath("$.data.taskType").value("ROLLBACK"))
+                .andExpect(jsonPath("$.data.rollbackOfTaskId").value("77"));
+    }
+
+    @Test
     void download_validSignature_streamsBinary() throws Exception {
         Firmware firmware = new Firmware();
         firmware.setId(10L);

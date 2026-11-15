@@ -12,6 +12,7 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,5 +46,19 @@ public class OtaTaskController {
             @RequestParam String deviceId,
             @RequestParam(defaultValue = "20") int limit) {
         return ApiResponse.ok(otaService.recent(deviceId, limit, dataScopeService.current()));
+    }
+
+    /** 将设备回退到该任务升级前的版本，生成新的 ROLLBACK 任务。 */
+    @PostMapping("/{id}/rollback")
+    public ApiResponse<OtaTaskVO> rollback(@PathVariable Long id, Authentication authentication) {
+        OtaTaskVO vo = otaService.rollback(id, dataScopeService.current(),
+                authentication.getName());
+        auditLogService.record("OTA_ROLLBACK", "ota_task", Map.of(
+                "id", String.valueOf(vo.getId()),
+                "rollbackOf", String.valueOf(id),
+                "deviceId", vo.getDeviceId(),
+                "fromVersion", String.valueOf(vo.getFromVersion()),
+                "toVersion", String.valueOf(vo.getFirmwareVersion())));
+        return ApiResponse.ok(vo);
     }
 }

@@ -3,7 +3,12 @@ package com.github.wuzhudexiaopacai.ota.service;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.wuzhudexiaopacai.device.entity.Device;
+import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.ota.entity.Firmware;
 import com.github.wuzhudexiaopacai.ota.entity.OtaTask;
+import com.github.wuzhudexiaopacai.ota.mapper.FirmwareMapper;
 import com.github.wuzhudexiaopacai.ota.event.OtaTaskFinishedEvent;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -23,6 +28,9 @@ public class OtaProgressService {
     private static final Logger log = LoggerFactory.getLogger(OtaProgressService.class);
 
     private final OtaTaskMapper taskMapper;
+    private final FirmwareMapper firmwareMapper;
+    private final DeviceMapper deviceMapper;
+    private final DeviceLookupService deviceLookupService;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
@@ -89,6 +97,7 @@ public class OtaProgressService {
                 task.setNextAttemptAt(null);
                 task.setFinishedAt(now);
                 task.setUpdatedAt(now);
+                updateDeviceFirmwareVersion(task);
                 meterRegistry.counter("coherer.ota.finished", "result", "success").increment();
                 publishFinished(task);
             } else if ("DOWNLOADING".equals(status)) {
@@ -172,6 +181,22 @@ public class OtaProgressService {
         task.setFinishedAt(now);
         meterRegistry.counter("coherer.ota.finished", "result", "failed").increment();
         publishFinished(task);
+    }
+
+    private void updateDeviceFirmwareVersion(OtaTask task) {
+        try {
+            Firmware firmware = firmwareMapper.selectById(task.getFirmwareId());
+            if (firmware != null) {
+                deviceMapper.update(null, Wrappers.<Device>lambdaUpdate()
+                        .eq(Device::getDeviceId, task.getDeviceId())
+                        .set(Device::getFirmwareVersion, firmware.getVersion()));
+                deviceLookupService.invalidate(task.getDeviceId());
+            }
+        } catch (Exception e) {
+            // 版本展示是旁路信息，不能影响任务成功落库
+            log.warn("更新设备固件版本失败 deviceId={} err={}",
+                    task.getDeviceId(), e.getMessage());
+        }
     }
 
     private void publishFinished(OtaTask task) {
