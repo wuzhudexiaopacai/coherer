@@ -19,12 +19,22 @@ const meta = computed(() => {
       return { label: '已下发', color: 'var(--accent)' }
     case 'DOWNLOADING':
       return { label: '下载中', color: 'var(--accent)' }
+    case 'RUNNING':
+      return { label: '执行中', color: 'var(--accent)' }
+    case 'PAUSED':
+      return { label: '已暂停', color: 'var(--warning)' }
     case 'SUCCESS':
       return { label: '成功', color: 'var(--success)' }
+    case 'PARTIAL_FAILED':
+      return { label: '部分失败', color: 'var(--warning)' }
     case 'FAILED':
       return { label: '失败', color: 'var(--danger)' }
     case 'TIMEOUT':
       return { label: '超时', color: 'var(--warning)' }
+    case 'CANCELED':
+      return { label: '已取消', color: 'var(--text-3)' }
+    case 'SKIPPED':
+      return { label: '已跳过', color: 'var(--text-3)' }
     default:
       return { label: props.status || '未知', color: 'var(--text-3)' }
   }

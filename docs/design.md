@@ -349,6 +349,36 @@ stateDiagram-v2
     Timeout --> [*]
 ```
 
+### 4.3.1 OTA 灰度批次状态
+
+```mermaid
+stateDiagram-v2
+    state "待启动" as Pending
+    state "执行中" as Running
+    state "已暂停" as Paused
+    state "成功" as Success
+    state "部分失败" as Partial
+    state "失败" as Failed
+    state "已取消" as Canceled
+
+    [*] --> Pending: 创建批次快照
+    Pending --> Running: 启动第 1 批
+    Running --> Running: 当前批完成且未触发熔断
+    Running --> Paused: 失败率达到阈值
+    Running --> Paused: 人工暂停 / 非自动推进
+    Paused --> Running: 人工恢复
+    Running --> Success: 全部设备成功
+    Running --> Partial: 存在失败且存在成功
+    Running --> Failed: 全部失败
+    Pending --> Canceled: 取消
+    Running --> Canceled: 取消（已下发任务继续）
+    Paused --> Canceled: 取消
+    Success --> [*]
+    Partial --> [*]
+    Failed --> [*]
+    Canceled --> [*]
+```
+
 ### 4.4 告警状态
 
 ```mermaid
@@ -388,6 +418,9 @@ erDiagram
     ALARM_RULE ||--o{ ALARM_RECORD : "产生"
     FIRMWARE ||--o{ OTA_TASK : "关联"
     DEVICE ||--o{ OTA_TASK : "执行"
+    FIRMWARE ||--o{ OTA_ROLLOUT : "灰度发布"
+    OTA_ROLLOUT ||--o{ OTA_ROLLOUT_DEVICE : "包含"
+    OTA_ROLLOUT ||--o{ OTA_TASK : "分批下发"
 
     TENANT {
         bigint id PK
@@ -515,12 +548,34 @@ erDiagram
         bigint tenant_id FK
         bigint firmware_id FK
         varchar device_id "目标设备"
+        bigint rollout_id "所属灰度批次"
+        int batch_no "批次号"
         varchar status "PENDING/SENT/DOWNLOADING/SUCCESS/FAILED/TIMEOUT"
         int progress "进度 0-100"
         varchar error "失败原因"
         timestamp sent_at
         timestamp updated_at "超时巡检基准"
         timestamp finished_at
+    }
+    OTA_ROLLOUT {
+        bigint id PK
+        bigint firmware_id FK
+        bigint product_id FK
+        varchar target_type "DEVICE/SPACE/ALL"
+        varchar status "PENDING/RUNNING/PAUSED/SUCCESS/PARTIAL_FAILED/FAILED/CANCELED"
+        int batch_size "每批设备数"
+        int failure_threshold_percent "熔断阈值"
+        int current_batch
+        int reviewed_batch "已评审批次"
+        int total_count
+    }
+    OTA_ROLLOUT_DEVICE {
+        bigint id PK
+        bigint rollout_id FK
+        varchar device_id
+        int batch_no
+        varchar status "PENDING/RUNNING/SUCCESS/FAILED/SKIPPED"
+        bigint task_id FK
     }
     AUDIT_LOG {
         bigint id PK
@@ -603,6 +658,9 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | OTA | `GET /api/ota/download/{firmwareId}` | 设备侧签名下载（无需 JWT，10 分钟有效） |
 | OTA | `POST /api/ota/tasks` | 对单设备创建升级任务并立即下发 |
 | OTA | `GET /api/ota/tasks?deviceId=&limit=` | 设备最近升级任务与进度 |
+| OTA | `GET/POST /api/ota/rollouts` | 灰度批次列表 / 创建（设备、空间、全量目标） |
+| OTA | `GET /api/ota/rollouts/{id}` | 批次详情与成员进度 |
+| OTA | `POST /api/ota/rollouts/{id}/pause` · `/resume` · `/cancel` | 暂停 / 恢复 / 取消灰度 |
 
 ### 6.2 内部接口（EMQX 回调）
 

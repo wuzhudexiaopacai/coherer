@@ -263,8 +263,74 @@ export interface OtaTask {
   status: OtaStatus
   progress: number
   error?: string
+  rolloutId?: string
+  batchNo?: number
   createdBy?: string
   createdAt: string
   sentAt?: string
   finishedAt?: string
+}
+
+export type OtaRolloutStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'SUCCESS'
+  | 'PARTIAL_FAILED'
+  | 'FAILED'
+  | 'CANCELED'
+
+export type OtaRolloutDeviceStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'SKIPPED'
+
+export interface OtaRollout {
+  id: string
+  firmwareId: string
+  firmwareVersion?: string
+  productId: string
+  name: string
+  targetType: 'DEVICE' | 'SPACE' | 'ALL'
+  targetSpaceId?: string
+  status: OtaRolloutStatus
+  batchSize: number
+  failureThresholdPercent: number
+  autoAdvance: boolean
+  pauseReason?: string
+  currentBatch: number
+  totalBatches: number
+  totalCount: number
+  pendingCount: number
+  runningCount: number
+  successCount: number
+  failedCount: number
+  skippedCount: number
+  createdBy?: string
+  createdAt: string
+  startedAt?: string
+  finishedAt?: string
+}
+
+export interface OtaRolloutDevice {
+  deviceId: string
+  deviceName?: string
+  batchNo: number
+  status: OtaRolloutDeviceStatus
+  taskId?: string
+  taskStatus?: OtaStatus
+  progress?: number
+  error?: string
+}
+
+export interface OtaRolloutDetail extends OtaRollout {
+  devices: OtaRolloutDevice[]
+}
+
+export interface OtaRolloutCreateBody {
+  firmwareId: string
+  name: string
+  targetType: 'DEVICE' | 'SPACE' | 'ALL'
+  spaceId?: string
+  deviceIds?: string[]
+  batchSize: number
+  failureThresholdPercent: number
+  autoAdvance: boolean
 }

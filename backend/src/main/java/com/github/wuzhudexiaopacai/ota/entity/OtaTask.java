@@ -26,6 +26,10 @@ public class OtaTask {
 
     private String error;
 
+    private Long rolloutId;
+
+    private Integer batchNo;
+
     private String createdBy;
 
     private OffsetDateTime createdAt;

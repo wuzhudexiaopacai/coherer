@@ -4,7 +4,7 @@ import { Delete, Refresh, UploadFilled } from '@element-plus/icons-vue'
 import type { UploadUserFile } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
-import type { Device, Firmware, OtaTask } from '../api/types'
+import type { Device, Firmware, OtaRollout, OtaRolloutDetail, OtaTask } from '../api/types'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProductStore } from '../stores/products'
@@ -23,10 +23,16 @@ const devicesLoading = ref(false)
 const taskDeviceId = ref<string | null>(null)
 const tasks = ref<OtaTask[]>([])
 const tasksLoading = ref(false)
+const rollouts = ref<OtaRollout[]>([])
+const rolloutLoading = ref(false)
 let pollTimer: number | undefined
 
 const activeStatuses = new Set(['PENDING', 'SENT', 'DOWNLOADING'])
+const activeRolloutStatuses = new Set(['PENDING', 'RUNNING', 'PAUSED'])
 const hasActiveTask = computed(() => tasks.value.some((task) => activeStatuses.has(task.status)))
+const hasActiveRollout = computed(() =>
+  rollouts.value.some((rollout) => activeRolloutStatuses.has(rollout.status))
+)
 const selectedProduct = computed(() =>
   productStore.products.find((item) => item.id === selectedProductId.value) ?? null
 )
@@ -43,6 +49,25 @@ const startDialog = reactive({
   loading: false,
   firmware: null as Firmware | null,
   deviceId: null as string | null
+})
+
+const rolloutDialog = reactive({
+  visible: false,
+  loading: false,
+  firmware: null as Firmware | null,
+  name: '',
+  targetType: 'SPACE' as 'DEVICE' | 'SPACE' | 'ALL',
+  spaceId: null as string | null,
+  deviceIds: [] as string[],
+  batchSize: 10,
+  failureThresholdPercent: 20,
+  autoAdvance: true
+})
+
+const rolloutDetail = reactive({
+  visible: false,
+  loading: false,
+  data: null as OtaRolloutDetail | null
 })
 
 function fmtSize(value: number | string): string {
@@ -109,6 +134,186 @@ async function loadTasks() {
   } finally {
     tasksLoading.value = false
   }
+}
+
+async function loadRollouts() {
+  if (!selectedProductId.value) {
+    rollouts.value = []
+    return
+  }
+  rolloutLoading.value = true
+  try {
+    const page = await api.listOtaRollouts({
+      productId: selectedProductId.value,
+      current: 1,
+      size: 50
+    })
+    rollouts.value = page.records
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    rolloutLoading.value = false
+  }
+}
+
+function openRollout(firmware: Firmware) {
+  rolloutDialog.firmware = firmware
+  rolloutDialog.name = `${firmware.version} 灰度发布`
+  rolloutDialog.targetType = 'SPACE'
+  rolloutDialog.spaceId = spaceStore.currentSpaceId ?? spaceStore.flat[0]?.id ?? null
+  rolloutDialog.deviceIds = []
+  rolloutDialog.batchSize = 10
+  rolloutDialog.failureThresholdPercent = 20
+  rolloutDialog.autoAdvance = true
+  rolloutDialog.visible = true
+}
+
+async function submitRollout() {
+  if (!rolloutDialog.firmware) {
+    return
+  }
+  if (!rolloutDialog.name.trim()) {
+    ElMessage.warning('请输入批次名称')
+    return
+  }
+  if (rolloutDialog.targetType === 'DEVICE' && rolloutDialog.deviceIds.length === 0) {
+    ElMessage.warning('请选择目标设备')
+    return
+  }
+  if (rolloutDialog.targetType === 'SPACE' && !rolloutDialog.spaceId) {
+    ElMessage.warning('请选择目标空间')
+    return
+  }
+  rolloutDialog.loading = true
+  try {
+    const detail = await api.createOtaRollout({
+      firmwareId: rolloutDialog.firmware.id,
+      name: rolloutDialog.name.trim(),
+      targetType: rolloutDialog.targetType,
+      spaceId: rolloutDialog.targetType === 'SPACE'
+        ? rolloutDialog.spaceId ?? undefined
+        : undefined,
+      deviceIds: rolloutDialog.targetType === 'DEVICE'
+        ? rolloutDialog.deviceIds
+        : undefined,
+      batchSize: rolloutDialog.batchSize,
+      failureThresholdPercent: rolloutDialog.failureThresholdPercent,
+      autoAdvance: rolloutDialog.autoAdvance
+    })
+    ElMessage.success(`灰度批次已创建，共 ${detail.totalCount} 台设备 / ${detail.totalBatches} 批`)
+    rolloutDialog.visible = false
+    await loadRollouts()
+    await openRolloutDetail(detail.id)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  } finally {
+    rolloutDialog.loading = false
+  }
+}
+
+async function openRolloutDetail(id: string) {
+  rolloutDetail.visible = true
+  rolloutDetail.loading = true
+  try {
+    rolloutDetail.data = await api.getOtaRollout(id)
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+    rolloutDetail.visible = false
+  } finally {
+    rolloutDetail.loading = false
+  }
+}
+
+async function refreshRolloutDetail() {
+  if (!rolloutDetail.data) return
+  try {
+    rolloutDetail.data = await api.getOtaRollout(rolloutDetail.data.id)
+  } catch {
+    // 轮询失败不打断抽屉
+  }
+}
+
+async function pauseRollout(row: OtaRollout) {
+  let reason = '人工暂停'
+  try {
+    const result = await ElMessageBox.prompt('暂停后当前批次继续执行，后续批次不再下发。', '暂停灰度', {
+      inputValue: '人工暂停',
+      confirmButtonText: '暂停',
+      cancelButtonText: '取消',
+      inputValidator: (value: string) => (value && value.trim() ? true : '请输入暂停原因')
+    })
+    reason = result.value.trim()
+  } catch {
+    return
+  }
+  try {
+    await api.pauseOtaRollout(row.id, reason)
+    ElMessage.success('灰度批次已暂停')
+    await loadRollouts()
+    if (rolloutDetail.visible && rolloutDetail.data?.id === row.id) await refreshRolloutDetail()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function resumeRollout(row: OtaRollout) {
+  try {
+    await ElMessageBox.confirm(
+      `恢复后将继续推进第 ${row.currentBatch + 1} 批及后续批次。确认恢复「${row.name}」？`,
+      '恢复灰度',
+      { type: 'info', confirmButtonText: '恢复', cancelButtonText: '取消' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.resumeOtaRollout(row.id)
+    ElMessage.success('灰度批次已恢复')
+    await loadRollouts()
+    if (rolloutDetail.visible && rolloutDetail.data?.id === row.id) await refreshRolloutDetail()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+async function cancelRollout(row: OtaRollout) {
+  try {
+    await ElMessageBox.confirm(
+      '取消后未下发的设备会标记为已跳过，已下发的设备继续执行。确认取消？',
+      '取消灰度',
+      { type: 'warning', confirmButtonText: '取消批次', cancelButtonText: '返回' }
+    )
+  } catch {
+    return
+  }
+  try {
+    await api.cancelOtaRollout(row.id)
+    ElMessage.success('灰度批次已取消')
+    await loadRollouts()
+    if (rolloutDetail.visible && rolloutDetail.data?.id === row.id) await refreshRolloutDetail()
+  } catch (error) {
+    ElMessage.error((error as Error).message)
+  }
+}
+
+function targetLabel(row: OtaRollout): string {
+  switch (row.targetType) {
+    case 'DEVICE':
+      return '指定设备'
+    case 'SPACE':
+      return '按空间'
+    default:
+      return '产品全量'
+  }
+}
+
+function rolloutProcessed(row: OtaRollout): number {
+  return row.successCount + row.failedCount + row.skippedCount
+}
+
+function rolloutPercent(row: OtaRollout): number {
+  if (!row.totalCount) return 0
+  return Math.min(100, Math.round((rolloutProcessed(row) * 100) / row.totalCount))
 }
 
 function openUpload() {
@@ -213,7 +418,8 @@ function deviceLabel(device: Device): string {
 watch(selectedProductId, async () => {
   taskDeviceId.value = null
   tasks.value = []
-  await Promise.all([loadFirmwares(), loadDevices()])
+  rollouts.value = []
+  await Promise.all([loadFirmwares(), loadDevices(), loadRollouts()])
   await loadTasks()
 })
 
@@ -225,6 +431,7 @@ watch(
   () => spaceStore.currentSpaceId,
   () => {
     void loadDevices()
+    void loadRollouts()
   }
 )
 
@@ -234,6 +441,13 @@ onMounted(async () => {
   pollTimer = window.setInterval(() => {
     if (taskDeviceId.value && (hasActiveTask.value || tasksLoading.value)) {
       void loadTasks()
+    }
+    if (hasActiveRollout.value) {
+      void loadRollouts()
+      if (rolloutDetail.visible && rolloutDetail.data
+          && activeRolloutStatuses.has(rolloutDetail.data.status)) {
+        void refreshRolloutDetail()
+      }
     }
   }, 4000)
 })
@@ -317,9 +531,10 @@ onBeforeUnmount(() => {
             <span class="tiny">{{ fmtDateTime(row.createdAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="auth.canWrite" label="操作" width="176" align="right">
+        <el-table-column v-if="auth.canWrite" label="操作" width="248" align="right">
           <template #default="{ row }">
             <el-button size="small" type="primary" text @click="openStart(row)">升级设备</el-button>
+            <el-button size="small" text @click="openRollout(row)">灰度发布</el-button>
             <el-button size="small" type="danger" text :icon="Delete" @click="removeFirmware(row)" />
           </template>
         </el-table-column>
@@ -329,6 +544,98 @@ onBeforeUnmount(() => {
             <span class="tiny">
               {{ auth.canWrite ? '上传后的固件会出现在这里，并可下发到同产品设备' : '暂无固件版本' }}
             </span>
+          </div>
+        </template>
+      </el-table>
+    </section>
+
+    <section class="card table-card rollout-card">
+      <div class="card-head">
+        <div>
+          <h3>灰度批次</h3>
+          <p class="tiny">按设备/空间/产品全量分批推进；单批失败率超阈值自动暂停，可人工恢复或取消</p>
+        </div>
+        <el-button :icon="Refresh" text @click="loadRollouts">刷新</el-button>
+      </div>
+      <el-table v-loading="rolloutLoading" :data="rollouts" size="large" row-key="id">
+        <el-table-column label="批次" min-width="200">
+          <template #default="{ row }">
+            <div class="rollout-name-cell">
+              <span class="rollout-name">{{ row.name }}</span>
+              <span class="tiny mono">v{{ row.firmwareVersion || '—' }} · {{ targetLabel(row) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="118">
+          <template #default="{ row }">
+            <StatusBadge :status="row.status" />
+          </template>
+        </el-table-column>
+        <el-table-column label="进度" min-width="230">
+          <template #default="{ row }">
+            <div class="rollout-progress">
+              <el-progress
+                :percentage="rolloutPercent(row)"
+                :stroke-width="8"
+                :status="row.status === 'SUCCESS' ? 'success'
+                  : row.status === 'FAILED' || row.status === 'PARTIAL_FAILED' ? 'exception' : undefined"
+              />
+              <span class="tiny">
+                成功 {{ row.successCount }} · 失败 {{ row.failedCount }} · 共 {{ row.totalCount }}
+              </span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="批次" width="96">
+          <template #default="{ row }">
+            <span class="mono tiny">{{ row.currentBatch }}/{{ row.totalBatches }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="熔断阈值" width="96">
+          <template #default="{ row }">
+            <span class="tiny">{{ row.failureThresholdPercent }}%</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="150">
+          <template #default="{ row }">
+            <span class="tiny">{{ fmtDateTime(row.createdAt) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="196" align="right">
+          <template #default="{ row }">
+            <el-button size="small" text type="primary" @click="openRolloutDetail(row.id)">详情</el-button>
+            <el-button
+              v-if="auth.canWrite && (row.status === 'RUNNING' || row.status === 'PENDING')"
+              size="small"
+              text
+              @click="pauseRollout(row)"
+            >
+              暂停
+            </el-button>
+            <el-button
+              v-if="auth.canWrite && row.status === 'PAUSED'"
+              size="small"
+              text
+              type="primary"
+              @click="resumeRollout(row)"
+            >
+              恢复
+            </el-button>
+            <el-button
+              v-if="auth.canWrite && activeRolloutStatuses.has(row.status)"
+              size="small"
+              text
+              type="danger"
+              @click="cancelRollout(row)"
+            >
+              取消
+            </el-button>
+          </template>
+        </el-table-column>
+        <template #empty>
+          <div class="empty-state">
+            <p>暂无灰度批次</p>
+            <span class="tiny">在固件列表点击「灰度发布」创建分批升级</span>
           </div>
         </template>
       </el-table>
@@ -478,6 +785,204 @@ onBeforeUnmount(() => {
         </el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="rolloutDialog.visible" title="灰度发布" width="640px">
+      <div class="form-grid">
+        <label class="field">
+          <span class="field-label">固件版本</span>
+          <el-input :model-value="rolloutDialog.firmware?.version ?? ''" disabled />
+        </label>
+        <label class="field">
+          <span class="field-label">批次名称</span>
+          <el-input v-model="rolloutDialog.name" maxlength="64" show-word-limit />
+        </label>
+        <div class="field">
+          <span class="field-label">目标范围</span>
+          <el-radio-group v-model="rolloutDialog.targetType" class="target-group">
+            <el-radio-button value="SPACE">按空间</el-radio-button>
+            <el-radio-button value="DEVICE">指定设备</el-radio-button>
+            <el-radio-button value="ALL">产品全量</el-radio-button>
+          </el-radio-group>
+        </div>
+        <label v-if="rolloutDialog.targetType === 'SPACE'" class="field">
+          <span class="field-label">目标空间（含子空间）</span>
+          <el-select v-model="rolloutDialog.spaceId" placeholder="选择空间">
+            <el-option
+              v-for="space in spaceStore.flat"
+              :key="space.id"
+              :label="'　'.repeat(space.depth) + space.name"
+              :value="space.id"
+            />
+          </el-select>
+        </label>
+        <label v-if="rolloutDialog.targetType === 'DEVICE'" class="field">
+          <span class="field-label">目标设备（最多 1000 台）</span>
+          <el-select
+            v-model="rolloutDialog.deviceIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="选择同产品设备"
+          >
+            <el-option
+              v-for="device in devices"
+              :key="device.deviceId"
+              :label="deviceLabel(device)"
+              :value="device.deviceId"
+            />
+          </el-select>
+        </label>
+        <el-alert
+          v-if="rolloutDialog.targetType === 'ALL'"
+          type="info"
+          :closable="false"
+          show-icon
+          title="产品全量"
+          description="覆盖当前产品下、当前账号数据范围内的所有未禁用设备；创建时冻结成员快照。"
+        />
+        <div class="strategy-grid">
+          <label class="field">
+            <span class="field-label">每批设备数</span>
+            <el-input-number v-model="rolloutDialog.batchSize" :min="1" :max="500" />
+          </label>
+          <label class="field">
+            <span class="field-label">失败率熔断阈值</span>
+            <el-input-number
+              v-model="rolloutDialog.failureThresholdPercent"
+              :min="0"
+              :max="100"
+              :step="5"
+            />
+          </label>
+          <label class="field switch-field">
+            <span class="field-label">自动推进下一批</span>
+            <el-switch v-model="rolloutDialog.autoAdvance" />
+          </label>
+        </div>
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          title="灰度策略"
+          description="同一时间只推进一个批次；该批完成后失败率达到阈值会暂停后续批次。关闭自动推进时，每批完成后需人工恢复。"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="rolloutDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="rolloutDialog.loading" @click="submitRollout">
+          创建灰度
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <el-drawer
+      v-model="rolloutDetail.visible"
+      :title="rolloutDetail.data ? `灰度详情 · ${rolloutDetail.data.name}` : '灰度详情'"
+      size="min(820px, 96vw)"
+    >
+      <div v-loading="rolloutDetail.loading" class="rollout-detail">
+        <template v-if="rolloutDetail.data">
+          <div class="detail-head">
+            <StatusBadge :status="rolloutDetail.data.status" />
+            <span class="mono tiny">v{{ rolloutDetail.data.firmwareVersion || '—' }}</span>
+            <span class="tiny">{{ targetLabel(rolloutDetail.data) }}</span>
+            <span class="tiny">{{ rolloutDetail.data.currentBatch }}/{{ rolloutDetail.data.totalBatches }} 批</span>
+          </div>
+          <el-alert
+            v-if="rolloutDetail.data.pauseReason"
+            type="warning"
+            :closable="false"
+            show-icon
+            :title="rolloutDetail.data.pauseReason"
+            class="pause-alert"
+          />
+          <div class="stat-grid">
+            <div class="stat-cell">
+              <span class="stat-label">总设备</span>
+              <strong>{{ rolloutDetail.data.totalCount }}</strong>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">成功</span>
+              <strong class="ok">{{ rolloutDetail.data.successCount }}</strong>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">失败</span>
+              <strong class="bad">{{ rolloutDetail.data.failedCount }}</strong>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">执行中</span>
+              <strong>{{ rolloutDetail.data.runningCount }}</strong>
+            </div>
+            <div class="stat-cell">
+              <span class="stat-label">熔断阈值</span>
+              <strong>{{ rolloutDetail.data.failureThresholdPercent }}%</strong>
+            </div>
+          </div>
+          <el-table :data="rolloutDetail.data.devices" size="small" max-height="520">
+            <el-table-column label="批次" width="64">
+              <template #default="{ row }">
+                <span class="mono tiny">#{{ row.batchNo }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="设备" min-width="180">
+              <template #default="{ row }">
+                <div class="rollout-name-cell">
+                  <span>{{ row.deviceName || row.deviceId }}</span>
+                  <span class="mono tiny">{{ row.deviceId }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="108">
+              <template #default="{ row }">
+                <StatusBadge :status="row.status" />
+              </template>
+            </el-table-column>
+            <el-table-column label="任务进度" width="150">
+              <template #default="{ row }">
+                <el-progress
+                  v-if="row.progress !== undefined && row.progress !== null"
+                  :percentage="row.progress"
+                  :stroke-width="6"
+                  :status="row.taskStatus === 'FAILED' || row.taskStatus === 'TIMEOUT'
+                    ? 'exception' : row.taskStatus === 'SUCCESS' ? 'success' : undefined"
+                />
+                <span v-else class="tiny">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="失败原因" min-width="160">
+              <template #default="{ row }">
+                <span v-if="row.error" class="error-text" :title="row.error">{{ row.error }}</span>
+                <span v-else class="tiny">—</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="auth.canWrite" class="drawer-actions">
+            <el-button
+              v-if="rolloutDetail.data.status === 'RUNNING' || rolloutDetail.data.status === 'PENDING'"
+              @click="pauseRollout(rolloutDetail.data)"
+            >
+              暂停
+            </el-button>
+            <el-button
+              v-if="rolloutDetail.data.status === 'PAUSED'"
+              type="primary"
+              @click="resumeRollout(rolloutDetail.data)"
+            >
+              恢复
+            </el-button>
+            <el-button
+              v-if="activeRolloutStatuses.has(rolloutDetail.data.status)"
+              type="danger"
+              plain
+              @click="cancelRollout(rolloutDetail.data)"
+            >
+              取消批次
+            </el-button>
+          </div>
+        </template>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
@@ -622,6 +1127,109 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
 }
 
+.rollout-card {
+  margin-top: 16px;
+}
+
+.rollout-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rollout-name {
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+
+.rollout-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.strategy-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 16px;
+  align-items: end;
+}
+
+.switch-field {
+  min-width: 110px;
+}
+
+.target-group {
+  width: 100%;
+}
+
+.target-group :deep(.el-radio-button) {
+  flex: 1;
+}
+
+.target-group :deep(.el-radio-button__inner) {
+  width: 100%;
+}
+
+.rollout-detail {
+  min-height: 240px;
+}
+
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.pause-alert {
+  margin-bottom: 16px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.012);
+}
+
+.stat-label {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.stat-cell strong {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.stat-cell strong.ok {
+  color: var(--success);
+}
+
+.stat-cell strong.bad {
+  color: var(--danger);
+}
+
+.drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 18px;
+}
+
 @media (max-width: 900px) {
   .product-select,
   .device-select {
@@ -633,6 +1241,12 @@ onBeforeUnmount(() => {
   .task-head {
     flex-direction: column;
     align-items: stretch;
+  }
+  .strategy-grid {
+    grid-template-columns: 1fr;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

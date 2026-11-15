@@ -366,6 +366,21 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **修复**：显式 `any(OtaTask.class)`。
 **验证**：`OtaProgressServiceTest` 编译并通过。
 
+### 11.7 `updateById` 不写 null，恢复后暂停原因残留
+
+**现象**：灰度批次恢复为 RUNNING 后，接口仍返回上一次的 `pauseReason`。
+**原因**：MyBatis-Plus `updateById` 默认只更新非 null 字段，`setPauseReason(null)` 不会生成 SQL。
+**修复**：恢复时改用 `lambdaUpdate().set(OtaRollout::getPauseReason, null)` 显式清空。
+**验证**：暂停 → 恢复后 `pauseReason` 为 null，批次继续推进到下一批。
+
+### 11.8 灰度调度崩溃后不能按 currentBatch+1 推进
+
+**现象**：调度器写入 `current_batch=1` 后、设备任务全部创建前进程退出，重启后可能直接跳到第 2 批。
+**原因**：批次号只由 `current_batch + 1` 推导，已写入的批次状态与成员实际状态不一致。
+**修复**：从 `ota_rollout_device` 查最小的 `status=PENDING` 批次号再补发；同一 `(rollout_id, device_id, batch_no)`
+的进行中任务按幂等复用，靠设备任务表唯一约束兜底。
+**验证**：单测覆盖批次推进；真实灰度中第 1/2 批按顺序完成。
+
 ## 12. 提交索引
 
 | 提交 | 内容 |

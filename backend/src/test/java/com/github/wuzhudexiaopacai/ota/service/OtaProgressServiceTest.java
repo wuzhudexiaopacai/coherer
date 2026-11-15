@@ -16,6 +16,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 
 class OtaProgressServiceTest {
 
@@ -27,7 +28,7 @@ class OtaProgressServiceTest {
     void setUp() {
         taskMapper = mock(OtaTaskMapper.class);
         service = new OtaProgressService(taskMapper, new ObjectMapper(),
-                new SimpleMeterRegistry());
+                mock(ApplicationEventPublisher.class), new SimpleMeterRegistry());
         task = new OtaTask();
         task.setId(1L);
         task.setDeviceId("dev-1");

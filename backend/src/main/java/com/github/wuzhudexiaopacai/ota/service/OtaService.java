@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.ota.dto.OtaStartRequest;
 import com.github.wuzhudexiaopacai.ota.entity.Firmware;
 import com.github.wuzhudexiaopacai.ota.entity.OtaTask;
+import com.github.wuzhudexiaopacai.ota.event.OtaTaskFinishedEvent;
 import com.github.wuzhudexiaopacai.ota.mapper.FirmwareMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
 import com.github.wuzhudexiaopacai.ota.vo.OtaTaskVO;
@@ -25,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -42,6 +44,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
     private final DeviceLookupService deviceLookupService;
     private final HostLookupService hostLookupService;
     private final OtaPublisher otaPublisher;
+    private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
 
     @Value("${coherer.ota.task-timeout-seconds:600}")
@@ -68,10 +71,44 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         if (!firmware.getProductId().equals(device.getProductId())) {
             throw new BizException(409, "固件与设备产品不匹配");
         }
+        OtaTask task = dispatch(firmware, device, operator, null, null);
+        return toVO(task, firmware);
+    }
+
+    /**
+     * 供灰度批次调度使用：调用方已完成目标与数据范围校验。
+     * 返回落库后的任务；下发失败时任务状态为 FAILED。
+     */
+    public OtaTaskDispatch startForDevice(Firmware firmware, Device device, String operator,
+                                          Long rolloutId, Integer batchNo) {
+        if ("DISABLED".equals(device.getStatus())) {
+            throw new BizException(409, "设备已禁用");
+        }
+        if (!firmware.getProductId().equals(device.getProductId())) {
+            throw new BizException(409, "固件与设备产品不匹配");
+        }
+        OtaTask task = dispatch(firmware, device, operator, rolloutId, batchNo);
+        return new OtaTaskDispatch(task.getId(), task.getStatus(), task.getError());
+    }
+
+    private OtaTask dispatch(Firmware firmware, Device device, String operator,
+                             Long rolloutId, Integer batchNo) {
         Long active = baseMapper.selectCount(Wrappers.<OtaTask>lambdaQuery()
                 .eq(OtaTask::getDeviceId, device.getDeviceId())
                 .in(OtaTask::getStatus, List.of("PENDING", "SENT", "DOWNLOADING")));
         if (active != null && active > 0) {
+            // 灰度调度重试/崩溃恢复：同一批次的进行中任务视为幂等，直接复用
+            if (rolloutId != null) {
+                OtaTask existing = baseMapper.selectOne(Wrappers.<OtaTask>lambdaQuery()
+                        .eq(OtaTask::getDeviceId, device.getDeviceId())
+                        .eq(OtaTask::getRolloutId, rolloutId)
+                        .eq(OtaTask::getBatchNo, batchNo)
+                        .in(OtaTask::getStatus, List.of("PENDING", "SENT", "DOWNLOADING"))
+                        .last("limit 1"));
+                if (existing != null) {
+                    return existing;
+                }
+            }
             throw new BizException(409, "该设备已有进行中的升级任务");
         }
 
@@ -82,6 +119,8 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         task.setTenantId(tenantId);
         task.setFirmwareId(firmware.getId());
         task.setDeviceId(device.getDeviceId());
+        task.setRolloutId(rolloutId);
+        task.setBatchNo(batchNo);
         task.setStatus("PENDING");
         task.setProgress(0);
         task.setCreatedBy(operator);
@@ -99,7 +138,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
             IotHost host = hostLookupService.getById(device.getHostId());
             if (host == null || "DISABLED".equals(host.getStatus())) {
                 markFailed(task, "设备所属主机不可用");
-                return toVO(task, firmware);
+                return task;
             }
             hostKey = host.getHostId();
         }
@@ -113,7 +152,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         } catch (Exception e) {
             log.warn("OTA 任务下发异常 taskId={} err={}", task.getId(), e.getMessage());
             markFailed(task, "OTA 指令生成或下发失败");
-            return toVO(task, firmware);
+            return task;
         }
         OffsetDateTime sentAt = OffsetDateTime.now();
         if (published) {
@@ -137,7 +176,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
             markFailed(task, "MQTT 通道未连接，OTA 指令未下发");
             meterRegistry.counter("coherer.ota.dispatched", "result", "failed").increment();
         }
-        return toVO(task, firmware);
+        return task;
     }
 
     public List<OtaTaskVO> recent(String deviceId, int limit, DataScope scope) {
@@ -206,6 +245,14 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         task.setUpdatedAt(OffsetDateTime.now());
         task.setFinishedAt(OffsetDateTime.now());
         updateById(task);
+        if (task.getRolloutId() != null) {
+            eventPublisher.publishEvent(new OtaTaskFinishedEvent(task.getId(),
+                    task.getRolloutId(), task.getDeviceId(), "FAILED", error));
+        }
+    }
+
+    /** 灰度调度只关心任务是否落库、当前状态与失败原因。 */
+    public record OtaTaskDispatch(Long taskId, String status, String error) {
     }
 
     private OtaTaskVO toVO(OtaTask task, Firmware firmware) {

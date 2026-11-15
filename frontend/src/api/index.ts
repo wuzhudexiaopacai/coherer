@@ -25,6 +25,9 @@ import type {
   Firmware,
   Host,
   HostRegisterResult,
+  OtaRollout,
+  OtaRolloutCreateBody,
+  OtaRolloutDetail,
   OtaTask
 } from './types'
 
@@ -281,5 +284,40 @@ export const api = {
       url: '/ota/tasks',
       method: 'get',
       params: { deviceId, limit }
-    })
+    }),
+
+  createOtaRollout: (body: OtaRolloutCreateBody) =>
+    request<OtaRolloutDetail>({
+      url: '/ota/rollouts',
+      method: 'post',
+      data: body
+    }),
+
+  listOtaRollouts: (params: {
+    current?: number
+    size?: number
+    productId?: string
+    status?: string
+  } = {}) =>
+    request<PageResult<OtaRollout>>({
+      url: '/ota/rollouts',
+      method: 'get',
+      params: { current: 1, size: 20, ...params }
+    }),
+
+  getOtaRollout: (id: string) =>
+    request<OtaRolloutDetail>({ url: `/ota/rollouts/${id}`, method: 'get' }),
+
+  pauseOtaRollout: (id: string, reason?: string) =>
+    request<OtaRolloutDetail>({
+      url: `/ota/rollouts/${id}/pause`,
+      method: 'post',
+      data: { reason }
+    }),
+
+  resumeOtaRollout: (id: string) =>
+    request<OtaRolloutDetail>({ url: `/ota/rollouts/${id}/resume`, method: 'post' }),
+
+  cancelOtaRollout: (id: string) =>
+    request<OtaRolloutDetail>({ url: `/ota/rollouts/${id}/cancel`, method: 'post' })
 }

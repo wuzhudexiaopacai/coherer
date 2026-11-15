@@ -4,12 +4,14 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.ota.entity.OtaTask;
+import com.github.wuzhudexiaopacai.ota.event.OtaTaskFinishedEvent;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.OffsetDateTime;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 /** 处理设备 OTA 进度上报。 */
@@ -21,6 +23,7 @@ public class OtaProgressService {
 
     private final OtaTaskMapper taskMapper;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
     private final MeterRegistry meterRegistry;
 
     public void onProgress(String deviceId, byte[] payload) {
@@ -61,6 +64,11 @@ public class OtaProgressService {
             if ("SUCCESS".equals(task.getStatus()) || "FAILED".equals(task.getStatus())) {
                 meterRegistry.counter("coherer.ota.finished",
                         "result", task.getStatus().toLowerCase()).increment();
+                if (task.getRolloutId() != null) {
+                    eventPublisher.publishEvent(new OtaTaskFinishedEvent(task.getId(),
+                            task.getRolloutId(), task.getDeviceId(), task.getStatus(),
+                            task.getError()));
+                }
             }
             log.info("OTA 进度 deviceId={} taskId={} status={} progress={}",
                     deviceId, taskId, task.getStatus(), task.getProgress());

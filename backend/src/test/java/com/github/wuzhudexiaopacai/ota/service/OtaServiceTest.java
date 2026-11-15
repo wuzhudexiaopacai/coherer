@@ -30,6 +30,7 @@ import java.util.List;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class OtaServiceTest {
@@ -39,6 +40,7 @@ class OtaServiceTest {
     private DeviceLookupService deviceLookupService;
     private HostLookupService hostLookupService;
     private OtaPublisher publisher;
+    private ApplicationEventPublisher eventPublisher;
     private OtaTaskMapper taskMapper;
     private SimpleMeterRegistry registry;
     private OtaService service;
@@ -56,10 +58,11 @@ class OtaServiceTest {
         deviceLookupService = mock(DeviceLookupService.class);
         hostLookupService = mock(HostLookupService.class);
         publisher = mock(OtaPublisher.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
         taskMapper = mock(OtaTaskMapper.class);
         registry = new SimpleMeterRegistry();
         service = new OtaService(firmwareService, firmwareMapper, deviceLookupService,
-                hostLookupService, publisher, registry);
+                hostLookupService, publisher, eventPublisher, registry);
         ReflectionTestUtils.setField(service, "baseMapper", taskMapper);
         ReflectionTestUtils.setField(service, "taskTimeoutSeconds", 600L);
 
