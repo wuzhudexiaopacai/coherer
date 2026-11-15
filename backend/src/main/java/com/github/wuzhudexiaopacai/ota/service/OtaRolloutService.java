@@ -18,6 +18,8 @@ import com.github.wuzhudexiaopacai.ota.mapper.OtaRolloutDeviceMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaRolloutMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
 import com.github.wuzhudexiaopacai.ota.vo.OtaRolloutDetailVO;
+import com.github.wuzhudexiaopacai.project.service.ProjectScopeService;
+import com.github.wuzhudexiaopacai.project.service.ProjectService;
 import com.github.wuzhudexiaopacai.ota.vo.OtaRolloutDeviceVO;
 import com.github.wuzhudexiaopacai.ota.vo.OtaRolloutVO;
 import com.github.wuzhudexiaopacai.security.DataScope;
@@ -70,6 +72,7 @@ public class OtaRolloutService {
     private final DeviceLookupService deviceLookupService;
     private final DeviceMapper deviceMapper;
     private final SpaceService spaceService;
+    private final ProjectScopeService projectScopeService;
     private final OtaService otaService;
     private final MeterRegistry meterRegistry;
 
@@ -77,7 +80,10 @@ public class OtaRolloutService {
     public OtaRolloutDetailVO create(OtaRolloutCreateRequest request, DataScope scope,
                                      String operator) {
         Firmware firmware = firmwareService.require(request.getFirmwareId());
-        List<Device> targets = resolveTargets(request, firmware, scope);
+        Long projectId = request.getProjectId() == null
+                ? ProjectService.DEFAULT_PROJECT_ID : request.getProjectId();
+        List<Long> projectSpaceIds = projectScopeService.resolveSpaceIds(scope, projectId, null);
+        List<Device> targets = resolveTargets(request, firmware, scope, projectSpaceIds);
         if (targets.isEmpty()) {
             throw new BizException(409, "目标范围内没有可升级设备");
         }
@@ -95,6 +101,7 @@ public class OtaRolloutService {
         rollout.setTenantId(firmware.getTenantId() == null ? "default" : firmware.getTenantId());
         rollout.setFirmwareId(firmware.getId());
         rollout.setProductId(firmware.getProductId());
+        rollout.setProjectId(projectId);
         rollout.setName(request.getName().trim());
         rollout.setTargetType(request.getTargetType().toUpperCase(Locale.ROOT));
         rollout.setTargetSpaceId(request.getSpaceId());
@@ -131,11 +138,12 @@ public class OtaRolloutService {
         return detail(rollout.getId(), scope, operator);
     }
 
-    public PageResult<OtaRolloutVO> page(long current, long size, Long productId, String status,
-                                         DataScope scope, String username) {
+    public PageResult<OtaRolloutVO> page(long current, long size, Long productId, Long projectId,
+                                         String status, DataScope scope, String username) {
         Page<OtaRollout> page = rolloutMapper.selectPage(new Page<>(current, size),
                 Wrappers.<OtaRollout>lambdaQuery()
                         .eq(productId != null, OtaRollout::getProductId, productId)
+                        .eq(projectId != null, OtaRollout::getProjectId, projectId)
                         .eq(StringUtils.hasText(status), OtaRollout::getStatus, status)
                         .eq(!scope.unrestricted(), OtaRollout::getCreatedBy, username)
                         .orderByDesc(OtaRollout::getCreatedAt));
@@ -322,7 +330,7 @@ public class OtaRolloutService {
     }
 
     private List<Device> resolveTargets(OtaRolloutCreateRequest request, Firmware firmware,
-                                        DataScope scope) {
+                                        DataScope scope, List<Long> projectSpaceIds) {
         String targetType = request.getTargetType().toUpperCase(Locale.ROOT);
         if ("DEVICE".equals(targetType)) {
             if (request.getDeviceIds() == null || request.getDeviceIds().isEmpty()) {
@@ -340,6 +348,9 @@ public class OtaRolloutService {
                 if (!firmware.getProductId().equals(device.getProductId())) {
                     throw new BizException(409, "设备与固件产品不匹配: " + deviceId);
                 }
+                if (!projectSpaceIds.contains(device.getSpaceId())) {
+                    throw new BizException(409, "设备不属于该项目: " + deviceId);
+                }
                 if (!"DISABLED".equals(device.getStatus())) {
                     devices.add(device);
                 }
@@ -355,15 +366,14 @@ public class OtaRolloutService {
             if (!scope.allows(request.getSpaceId()) || !spaceService.exists(request.getSpaceId())) {
                 throw new BizException(403, "无权在该空间发起升级");
             }
+            if (!projectSpaceIds.contains(request.getSpaceId())) {
+                throw new BizException(409, "空间不属于该项目");
+            }
             List<Long> spaceIds = spaceService.descendantIds(request.getSpaceId());
             return queryProductDevices(firmware.getProductId(), spaceIds);
         }
         if ("ALL".equals(targetType)) {
-            if (!scope.unrestricted() && scope.spaceIds().isEmpty()) {
-                throw new BizException(403, "当前用户没有可操作的空间");
-            }
-            return queryProductDevices(firmware.getProductId(),
-                    scope.unrestricted() ? null : scope.spaceIds());
+            return queryProductDevices(firmware.getProductId(), projectSpaceIds);
         }
         throw new BizException(400, "不支持的目标类型: " + targetType);
     }

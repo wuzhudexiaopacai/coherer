@@ -15,6 +15,9 @@ public class OtaRolloutCreateRequest {
     @NotNull(message = "固件不能为空")
     private Long firmwareId;
 
+    /** 所属项目；缺省为默认项目 */
+    private Long projectId;
+
     @NotBlank(message = "批次名称不能为空")
     @Size(max = 64, message = "批次名称最长 64")
     private String name;

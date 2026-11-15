@@ -12,6 +12,8 @@ public class HostVO {
 
     private String name;
 
+    private Long projectId;
+
     private Long spaceId;
 
     private String model;

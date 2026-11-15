@@ -8,6 +8,7 @@ import com.github.wuzhudexiaopacai.device.dto.DeviceRegisterRequest;
 import com.github.wuzhudexiaopacai.device.service.DeviceService;
 import com.github.wuzhudexiaopacai.device.vo.DeviceRegisterResult;
 import com.github.wuzhudexiaopacai.device.vo.DeviceVO;
+import com.github.wuzhudexiaopacai.project.service.ProjectScopeService;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.security.DataScopeService;
 import jakarta.validation.Valid;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class DeviceController {
 
     private final DeviceService deviceService;
+    private final ProjectScopeService projectScopeService;
     private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
@@ -48,12 +50,14 @@ public class DeviceController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long spaceId,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword) {
         return ApiResponse.ok(deviceService.page(
                 PageParams.current(current), PageParams.size(size, 100),
-                productId, status, keyword, dataScopeService.resolveSpaceIds(spaceId)));
+                productId, status, keyword, projectScopeService.resolveSpaceIds(
+                        dataScopeService.current(), projectId, spaceId)));
     }
 
     @GetMapping("/{id}")

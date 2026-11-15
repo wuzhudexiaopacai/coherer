@@ -479,7 +479,40 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 **说明**：`MqttGateway` 由真实 EMQX/模拟器 E2E 覆盖，不进入 Mock 单元覆盖率分母；
 其余业务 Service 不得用排除来“美化”覆盖率。
 
-## 13. 提交索引
+## 13. 项目层
+
+### 13.1 存量项目语义迁移
+
+**背景**：此前 `space.type=PROJECT` 的根节点就是“项目”。新增独立 `project` 表后不能丢数据。
+**做法**：V22 把每个根 PROJECT 空间迁移成项目，项目 `id` 复用根空间 `id`；递归 CTE 把子树写入
+`space.project_id`；根空间 `type` 改为 `GENERIC`，避免“项目/空间”双重语义；无根 PROJECT 时归默认项目 1。
+迁移项目 code 追加 `-<id>` 防历史重复编码；默认项目名称由 V23 修正为“默认项目”。
+**验证**：真实库迁移后 `项目(1,默认项目)` 与 `项目(华东园区)` 正常，空间/设备计数与迁移前一致。
+
+### 13.2 主机/设备不冗余 project_id
+
+**原因**：主机/设备已经通过 `space_id` 归属空间；再存一份 project_id 会在空间移动、主机绑定、
+设备迁移时产生一致性负担。
+**做法**：项目过滤统一解析为 `project → spaceIds ∩ 用户数据范围`，再复用已有
+`spaceIds` 查询；`HostVO/DeviceVO` 的 projectId 由 `SpaceService.projectIdOf` 补齐。
+**验证**：`ProjectIT` 中两个项目的设备/主机列表互不串数据。
+
+### 13.3 空间缓存要同时失效项目空间集合
+
+**现象**：新建空间后按项目过滤仍看不到新空间。
+**原因**：`SpaceService` 有 allSpaces/descendant/projectSpaces 三层 Caffeine 缓存。
+**修复**：所有空间写操作统一 `invalidateSpaceCaches()`，同时清空 `projectSpaceCache`。
+**验证**：`SpaceServiceTest` 项目空间集合与树过滤用例；`ProjectIT` 创建空间后立即查询。
+
+### 13.4 前端必须先加载项目再加载空间树
+
+**现象**：刷新后空间树显示其他项目空间，或保存的 spaceId 在切换项目后仍被选中。
+**修复**：`AppLayout` 固定顺序 `refreshUser → projectStore.ensureLoaded → spaceStore.ensureLoaded`；
+切换项目时 `spaceStore.reset()` 清空树和当前空间，再强制重载；`coherer.projectId` 与
+`coherer.spaceId` 分别持久化并校验失效值。
+**验证**：前端 build；手工切换项目后设备/主机/看板/告警/OTA 均刷新为该项目数据。
+
+## 14. 提交索引
 
 | 提交 | 内容 |
 |---|---|
@@ -507,7 +540,7 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 | `f1f42a7` | TDengine space_id tag/保留期 |
 | `042c79d` | 设备事件上报 |
 
-## 14. 仍建议优先处理
+## 15. 仍建议优先处理
 
 1. ~~写入前校验遥测 payload 长度，避免 TDengine 截断~~（已完成）
 2. ~~命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流~~（已完成）

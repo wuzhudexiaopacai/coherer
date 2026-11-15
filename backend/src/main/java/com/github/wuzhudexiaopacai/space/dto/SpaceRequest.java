@@ -8,6 +8,9 @@ import lombok.Data;
 @Data
 public class SpaceRequest {
 
+    /** 根空间归属项目；有 parentId 时从父空间继承并校验一致 */
+    private Long projectId;
+
     private Long parentId;
 
     @NotBlank(message = "空间名称不能为空")

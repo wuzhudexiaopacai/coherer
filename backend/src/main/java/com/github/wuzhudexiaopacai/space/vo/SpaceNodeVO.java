@@ -10,6 +10,8 @@ public class SpaceNodeVO {
 
     private Long id;
 
+    private Long projectId;
+
     private Long parentId;
 
     private String name;

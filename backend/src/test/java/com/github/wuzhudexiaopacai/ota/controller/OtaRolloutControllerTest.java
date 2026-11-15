@@ -92,7 +92,7 @@ class OtaRolloutControllerTest {
     @Test
     void page_returnsRollouts() throws Exception {
         OtaRolloutVO vo = rollout();
-        when(rolloutService.page(eq(1L), eq(10L), any(), any(), any(DataScope.class),
+        when(rolloutService.page(eq(1L), eq(10L), any(), any(), any(), any(DataScope.class),
                 eq("admin")))
                 .thenReturn(new PageResult<>(1, 1, 10, List.of(vo)));
 

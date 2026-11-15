@@ -283,6 +283,7 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
     private HostVO toVO(IotHost host, Map<Long, Long> childCounts) {
         HostVO vo = new HostVO();
         BeanUtils.copyProperties(host, vo);
+        vo.setProjectId(spaceService.projectIdOf(host.getSpaceId()));
         vo.setChildCount(childCounts.getOrDefault(host.getId(), 0L));
         return vo;
     }
@@ -290,6 +291,7 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
     private DeviceVO toDeviceVO(Device device) {
         DeviceVO vo = new DeviceVO();
         BeanUtils.copyProperties(device, vo);
+        vo.setProjectId(spaceService.projectIdOf(device.getSpaceId()));
         return vo;
     }
 }

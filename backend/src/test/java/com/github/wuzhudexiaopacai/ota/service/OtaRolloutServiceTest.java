@@ -29,6 +29,7 @@ import com.github.wuzhudexiaopacai.ota.mapper.FirmwareMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaRolloutDeviceMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaRolloutMapper;
 import com.github.wuzhudexiaopacai.ota.mapper.OtaTaskMapper;
+import com.github.wuzhudexiaopacai.project.service.ProjectScopeService;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -51,6 +52,7 @@ class OtaRolloutServiceTest {
     private DeviceLookupService deviceLookupService;
     private DeviceMapper deviceMapper;
     private SpaceService spaceService;
+    private ProjectScopeService projectScopeService;
     private OtaService otaService;
     private OtaRolloutService service;
     private Firmware firmware;
@@ -70,10 +72,13 @@ class OtaRolloutServiceTest {
         deviceLookupService = mock(DeviceLookupService.class);
         deviceMapper = mock(DeviceMapper.class);
         spaceService = mock(SpaceService.class);
+        projectScopeService = mock(ProjectScopeService.class);
         otaService = mock(OtaService.class);
         service = new OtaRolloutService(rolloutMapper, rolloutDeviceMapper, taskMapper,
                 firmwareMapper, firmwareService, deviceLookupService, deviceMapper,
-                spaceService, otaService, new SimpleMeterRegistry());
+                spaceService, projectScopeService, otaService, new SimpleMeterRegistry());
+        when(projectScopeService.resolveSpaceIds(any(), any(), any()))
+                .thenReturn(List.of(100L, 101L, 200L));
 
         firmware = new Firmware();
         firmware.setId(10L);

@@ -10,6 +10,8 @@ public class DeviceVO {
 
     private Long productId;
 
+    private Long projectId;
+
     private Long spaceId;
 
     private Long hostId;

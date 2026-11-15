@@ -14,6 +14,8 @@ public class OtaRolloutVO {
 
     private Long productId;
 
+    private Long projectId;
+
     private String name;
 
     private String targetType;

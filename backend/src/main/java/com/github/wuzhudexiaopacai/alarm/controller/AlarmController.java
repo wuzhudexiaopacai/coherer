@@ -6,6 +6,7 @@ import com.github.wuzhudexiaopacai.audit.AuditLogService;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
 import com.github.wuzhudexiaopacai.common.PageParams;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.project.service.ProjectScopeService;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.security.DataScopeService;
 import java.util.Map;
@@ -23,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AlarmController {
 
     private final AlarmRecordService alarmRecordService;
+    private final ProjectScopeService projectScopeService;
     private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
@@ -33,10 +35,13 @@ public class AlarmController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String level,
             @RequestParam(required = false) String deviceId,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long spaceId) {
         return ApiResponse.ok(alarmRecordService.page(
                 PageParams.current(current), PageParams.size(size, 100),
-                status, level, deviceId, dataScopeService.resolveSpaceIds(spaceId)));
+                status, level, deviceId,
+                projectScopeService.resolveSpaceIds(
+                        dataScopeService.current(), projectId, spaceId)));
     }
 
     @PostMapping("/{id}/ack")

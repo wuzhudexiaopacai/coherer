@@ -18,6 +18,9 @@ public class Space {
 
     private String tenantId;
 
+    /** 所属项目 */
+    private Long projectId;
+
     private Long parentId;
 
     private String name;

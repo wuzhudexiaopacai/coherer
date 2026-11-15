@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.host.dto.HostUpdateRequest;
 import com.github.wuzhudexiaopacai.host.service.HostService;
 import com.github.wuzhudexiaopacai.host.vo.HostRegisterResult;
 import com.github.wuzhudexiaopacai.host.vo.HostVO;
+import com.github.wuzhudexiaopacai.project.service.ProjectScopeService;
 import com.github.wuzhudexiaopacai.security.DataScopeService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class HostController {
 
     private final HostService hostService;
+    private final ProjectScopeService projectScopeService;
     private final DataScopeService dataScopeService;
     private final AuditLogService auditLogService;
 
@@ -39,10 +41,12 @@ public class HostController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) Long spaceId) {
         return ApiResponse.ok(hostService.page(
                 PageParams.current(current), PageParams.size(size, 100), keyword,
-                dataScopeService.resolveSpaceIds(spaceId)));
+                projectScopeService.resolveSpaceIds(
+                        dataScopeService.current(), projectId, spaceId)));
     }
 
     @PostMapping

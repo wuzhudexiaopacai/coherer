@@ -7,6 +7,11 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
+import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.host.mapper.IotHostMapper;
+import com.github.wuzhudexiaopacai.project.entity.Project;
+import com.github.wuzhudexiaopacai.project.mapper.ProjectMapper;
+import com.github.wuzhudexiaopacai.project.service.ProjectService;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.space.dto.SpaceRequest;
 import com.github.wuzhudexiaopacai.space.dto.SpaceUpdateRequest;
@@ -35,6 +40,8 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
     public static final long DEFAULT_SPACE_ID = 1L;
 
     private final DeviceMapper deviceMapper;
+    private final IotHostMapper hostMapper;
+    private final ProjectMapper projectMapper;
 
     /** 空间树变化不频繁：缓存整表与后代集合，写操作后主动失效。 */
     private final Cache<String, List<Space>> allSpacesCache = Caffeine.newBuilder()
@@ -42,6 +49,10 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             .maximumSize(1)
             .build();
     private final Cache<Long, List<Long>> descendantCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(2_000)
+            .build();
+    private final Cache<Long, List<Long>> projectSpaceCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(60))
             .maximumSize(2_000)
             .build();
@@ -55,15 +66,26 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
     private void invalidateSpaceCaches() {
         allSpacesCache.invalidateAll();
         descendantCache.invalidateAll();
+        projectSpaceCache.invalidateAll();
     }
 
     public List<SpaceNodeVO> tree() {
-        return tree(null);
+        return tree(null, null);
     }
 
     /** 按数据范围返回空间树：受限用户只能看到自己空间及其子空间。 */
     public List<SpaceNodeVO> tree(DataScope scope) {
+        return tree(scope, null);
+    }
+
+    /** 项目 + 数据范围双重过滤后的空间树。 */
+    public List<SpaceNodeVO> tree(DataScope scope, Long projectId) {
         List<Space> all = allSpaces();
+        if (projectId != null) {
+            all = all.stream()
+                    .filter(space -> projectId.equals(space.getProjectId()))
+                    .toList();
+        }
         if (scope != null && !scope.unrestricted()) {
             Set<Long> allowed = new HashSet<>(scope.spaceIds());
             all = all.stream().filter(space -> allowed.contains(space.getId())).toList();
@@ -73,11 +95,28 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
 
     @Transactional(rollbackFor = Exception.class)
     public SpaceNodeVO create(SpaceRequest request) {
-        if (request.getParentId() != null && getById(request.getParentId()) == null) {
-            throw new BizException(404, "父空间不存在");
+        Long projectId;
+        if (request.getParentId() != null) {
+            Space parent = requireSpace(request.getParentId());
+            if (request.getProjectId() != null
+                    && !request.getProjectId().equals(parent.getProjectId())) {
+                throw new BizException(409, "子空间必须与父空间属于同一项目");
+            }
+            projectId = parent.getProjectId();
+        } else {
+            projectId = request.getProjectId() == null
+                    ? ProjectService.DEFAULT_PROJECT_ID : request.getProjectId();
+        }
+        Project project = projectMapper.selectById(projectId);
+        if (project == null) {
+            throw new BizException(404, "项目不存在");
+        }
+        if ("DISABLED".equals(project.getStatus())) {
+            throw new BizException(409, "项目已禁用，不能新建空间");
         }
         Space space = new Space();
         space.setTenantId("default");
+        space.setProjectId(projectId);
         space.setParentId(request.getParentId());
         space.setName(request.getName());
         space.setCode(request.getCode());
@@ -100,8 +139,9 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             if (descendantIds(id).contains(request.getParentId())) {
                 throw new BizException("不能移动到自己的子空间下");
             }
-            if (getById(request.getParentId()) == null) {
-                throw new BizException(404, "父空间不存在");
+            Space newParent = requireSpace(request.getParentId());
+            if (!space.getProjectId().equals(newParent.getProjectId())) {
+                throw new BizException(409, "不能把空间移动到其他项目");
             }
             space.setParentId(request.getParentId());
         }
@@ -141,8 +181,48 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
         if (deviceCount != null && deviceCount > 0) {
             throw new BizException("空间下存在设备，无法删除");
         }
+        Long hostCount = hostMapper.selectCount(
+                Wrappers.<IotHost>lambdaQuery().eq(IotHost::getSpaceId, id));
+        if (hostCount != null && hostCount > 0) {
+            throw new BizException("空间下存在主机，无法删除");
+        }
         removeById(id);
         invalidateSpaceCaches();
+    }
+
+    /** 项目下的全部空间 id（含所有根/子空间）。 */
+    public List<Long> spaceIdsOfProject(Long projectId) {
+        if (projectId == null) {
+            return List.of();
+        }
+        return projectSpaceCache.get(projectId, id -> allSpaces().stream()
+                .filter(space -> id.equals(space.getProjectId()))
+                .map(Space::getId)
+                .toList());
+    }
+
+    /** 给定空间集合覆盖到的项目 id，用于受限用户的项目列表。 */
+    public Set<Long> projectIdsInSpaces(List<Long> spaceIds) {
+        if (spaceIds == null || spaceIds.isEmpty()) {
+            return Set.of();
+        }
+        Set<Long> allowed = new HashSet<>(spaceIds);
+        return allSpaces().stream()
+                .filter(space -> allowed.contains(space.getId()))
+                .map(Space::getProjectId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+    }
+
+    public Long projectIdOf(Long spaceId) {
+        if (spaceId == null) {
+            return null;
+        }
+        return allSpaces().stream()
+                .filter(space -> spaceId.equals(space.getId()))
+                .map(Space::getProjectId)
+                .findFirst()
+                .orElse(null);
     }
 
     /** 含自身的全部空间 id（用于按空间过滤设备/告警）。 */

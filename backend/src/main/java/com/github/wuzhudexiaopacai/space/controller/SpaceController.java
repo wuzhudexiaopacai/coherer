@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,8 +31,9 @@ public class SpaceController {
     private final AuditLogService auditLogService;
 
     @GetMapping("/tree")
-    public ApiResponse<List<SpaceNodeVO>> tree() {
-        return ApiResponse.ok(spaceService.tree(dataScopeService.current()));
+    public ApiResponse<List<SpaceNodeVO>> tree(
+            @RequestParam(required = false) Long projectId) {
+        return ApiResponse.ok(spaceService.tree(dataScopeService.current(), projectId));
     }
 
     @PostMapping

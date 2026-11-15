@@ -171,6 +171,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     private DeviceVO toVO(Device device) {
         DeviceVO vo = new DeviceVO();
         BeanUtils.copyProperties(device, vo);
+        vo.setProjectId(spaceService.projectIdOf(device.getSpaceId()));
         return vo;
     }
 }

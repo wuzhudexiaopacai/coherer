@@ -414,6 +414,8 @@ stateDiagram-v2
 ```mermaid
 erDiagram
     TENANT ||--o{ SYS_USER : "拥有"
+    TENANT ||--o{ PROJECT : "拥有"
+    PROJECT ||--o{ SPACE : "包含"
     TENANT ||--o{ PRODUCT : "拥有"
     SYS_USER }o--o{ SYS_ROLE : "分配"
     PRODUCT ||--o{ THING_MODEL : "定义"
@@ -436,13 +438,22 @@ erDiagram
         varchar status "状态"
         timestamp created_at
     }
+    PROJECT {
+        bigint id PK
+        bigint tenant_id FK
+        varchar code UK "项目编码"
+        varchar name "项目名"
+        varchar status "ACTIVE/DISABLED"
+        varchar description
+    }
     SPACE {
         bigint id PK
         bigint tenant_id FK
+        bigint project_id FK "所属项目"
         bigint parent_id "父空间"
         varchar name "名称"
         varchar code "编码"
-        varchar type "PROJECT/AREA/BUILDING/FLOOR/ROOM"
+        varchar type "AREA/BUILDING/FLOOR/ROOM/GENERIC"
         int sort "排序"
         varchar status "状态"
         smalldatetime deleted "逻辑删除"
@@ -655,9 +666,11 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 产品 | `GET/POST /api/products` | 产品列表 / 创建 |
 | 产品 | `GET/PUT/DELETE /api/products/{id}` | 产品详情 / 修改 / 删除 |
 | 物模型 | `GET/PUT /api/products/{id}/thing-model` | 查询 / 保存物模型定义 |
-| 空间 | `GET /api/spaces/tree` | 空间树（项目/区域/楼栋/楼层/房间） |
-| 空间 | `POST /api/spaces` · `PUT/DELETE /api/spaces/{id}` | 创建 / 修改 / 删除空间 |
-| 设备 | `GET/POST /api/devices` | 设备列表（分页/筛选/空间）/ 注册（支持批量） |
+| 项目 | `GET /api/projects` · `GET /api/projects/{id}` | 当前用户可见项目（含空间/主机/设备计数） |
+| 项目 | `POST /api/projects` · `PUT/DELETE /api/projects/{id}` | 项目创建/修改/删除（仅 ADMIN；删除前必须清空空间） |
+| 空间 | `GET /api/spaces/tree?projectId=` | 项目下的空间树（区域/楼栋/楼层/房间） |
+| 空间 | `POST /api/spaces` · `PUT/DELETE /api/spaces/{id}` | 创建（带 projectId）/ 修改 / 删除空间 |
+| 设备 | `GET/POST /api/devices` | 设备列表（分页/筛选/`projectId`/空间）/ 注册（支持批量） |
 | 设备 | `GET/PUT/DELETE /api/devices/{id}` | 详情 / 修改 / 删除 |
 | 设备 | `POST /api/devices/{id}/enable` | 启用 |
 | 设备 | `POST /api/devices/{id}/disable` | 禁用 |
@@ -665,8 +678,8 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 遥测 | `GET /api/devices/{id}/telemetry` | 历史查询（时间范围 + 聚合粒度） |
 | 命令 | `POST /api/devices/{id}/commands` | 服务调用 |
 | 命令 | `GET /api/devices/{id}/commands` | 命令历史 |
-| 告警 | `GET /api/alarms` | 告警列表（筛选） |
-| 看板 | `GET /api/dashboard/overview` · `/telemetry-trend` · `/recent-telemetry` | 总览 KPI、小时趋势、全平台最近遥测 |
+| 告警 | `GET /api/alarms` | 告警列表（筛选，支持 `projectId`） |
+| 看板 | `GET /api/dashboard/overview` · `/telemetry-trend` · `/recent-telemetry` | 总览 KPI、小时趋势、最近遥测（支持 `projectId`） |
 | 告警 | `POST /api/alarms/{id}/ack` `.../close` | 确认 / 关闭 |
 | 规则 | `GET/POST /api/alarm-rules` | 告警规则管理 |
 | OTA | `GET/POST /api/ota/firmwares` · `DELETE /api/ota/firmwares/{id}` | 按产品列出 / 上传（multipart）/ 删除固件 |

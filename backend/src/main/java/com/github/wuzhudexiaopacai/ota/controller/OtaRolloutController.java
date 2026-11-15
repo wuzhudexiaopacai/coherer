@@ -51,11 +51,13 @@ public class OtaRolloutController {
             @RequestParam(defaultValue = "1") long current,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) Long productId,
+            @RequestParam(required = false) Long projectId,
             @RequestParam(required = false) String status,
             Authentication authentication) {
         return ApiResponse.ok(rolloutService.page(
                 PageParams.current(current), PageParams.size(size, 100),
-                productId, status, dataScopeService.current(), authentication.getName()));
+                productId, projectId, status, dataScopeService.current(),
+                authentication.getName()));
     }
 
     @GetMapping("/{id}")

@@ -135,8 +135,12 @@ public abstract class AbstractIntegrationTest {
     }
 
     protected HttpHeaders authJson() {
+        return bearer(token());
+    }
+
+    protected HttpHeaders bearer(String accessToken) {
         HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token());
+        headers.setBearerAuth(accessToken);
         headers.setContentType(MediaType.APPLICATION_JSON);
         return headers;
     }

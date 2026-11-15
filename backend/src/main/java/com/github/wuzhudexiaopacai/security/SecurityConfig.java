@@ -60,6 +60,10 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        // 项目是平台级边界，写操作仅 ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/projects/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/projects/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/projects/**").hasRole("ADMIN")
                         // RBAC：只读角色仅允许 GET；写操作要求 ADMIN / OPERATOR
                         .requestMatchers(HttpMethod.GET, "/api/**")
                         .hasAnyRole("ADMIN", "OPERATOR", "VIEWER")

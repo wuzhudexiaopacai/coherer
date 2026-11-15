@@ -19,6 +19,8 @@ public class OtaRollout {
 
     private Long productId;
 
+    private Long projectId;
+
     private String name;
 
     /** DEVICE / SPACE / ALL */
