@@ -101,6 +101,7 @@ public class OtaRolloutService {
         rollout.setStatus("PENDING");
         rollout.setBatchSize(batchSize);
         rollout.setFailureThresholdPercent(request.getFailureThresholdPercent());
+        rollout.setMaxAttempts(request.getMaxAttempts() == null ? 1 : request.getMaxAttempts());
         rollout.setAutoAdvance(request.getAutoAdvance() == null || request.getAutoAdvance());
         rollout.setCurrentBatch(0);
         rollout.setTotalCount(targets.size());
@@ -434,7 +435,8 @@ public class OtaRolloutService {
             }
             try {
                 OtaService.OtaTaskDispatch dispatch = otaService.startForDevice(
-                        firmware, device, rollout.getCreatedBy(), rollout.getId(), nextBatch);
+                        firmware, device, rollout.getCreatedBy(), rollout.getId(), nextBatch,
+                        rollout.getMaxAttempts() == null ? 1 : rollout.getMaxAttempts());
                 if ("FAILED".equals(dispatch.status())) {
                     updateMember(member, "FAILED", dispatch.taskId(), dispatch.error());
                 } else {

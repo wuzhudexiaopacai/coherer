@@ -73,11 +73,13 @@ def main() -> None:
         print(f"[{host_id}] 转发 OTA -> {device_id} taskId={task_id}"
               f" version={payload.get('version')}")
         progress_topic = f"{tenant}/{host_id}/sub/{device_id}/ota/progress"
+        attempt = payload.get("attempt", 1)
         for progress in (20, 60, 100):
             c.publish(progress_topic, json.dumps({
                 "taskId": task_id,
                 "status": "SUCCESS" if progress == 100 else "DOWNLOADING",
                 "progress": progress,
+                "attempt": attempt,
                 "ts": int(time.time() * 1000),
             }), qos=1)
             time.sleep(0.5)

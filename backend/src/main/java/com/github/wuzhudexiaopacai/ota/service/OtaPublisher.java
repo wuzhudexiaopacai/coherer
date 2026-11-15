@@ -5,5 +5,5 @@ public interface OtaPublisher {
 
     boolean publishOta(String tenantId, String deviceId, String hostKey,
                        Long taskId, Long firmwareId, String version,
-                       String downloadUrl, String sha256, long sizeBytes);
+                       String downloadUrl, String sha256, long sizeBytes, int attempt);
 }

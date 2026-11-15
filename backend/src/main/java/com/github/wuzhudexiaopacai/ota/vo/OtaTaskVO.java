@@ -20,6 +20,12 @@ public class OtaTaskVO {
 
     private String error;
 
+    private Integer attempt;
+
+    private Integer maxAttempts;
+
+    private OffsetDateTime nextAttemptAt;
+
     private Long rolloutId;
 
     private Integer batchNo;

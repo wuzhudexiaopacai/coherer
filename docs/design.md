@@ -342,12 +342,18 @@ stateDiagram-v2
     Sent --> Failed: 设备回报失败
     Downloading --> Success: progress=100 / SUCCESS
     Downloading --> Failed: SHA256 不符 / 安装失败
-    Sent --> Timeout: 超时无进度
-    Downloading --> Timeout: 进度长时间未更新
+    Sent --> Timeout: 超时无进度且重试耗尽
+    Downloading --> Timeout: 进度长时间未更新且重试耗尽
+    Sent --> Pending: 失败/超时且 attempt < maxAttempts
+    Downloading --> Pending: 失败/超时且 attempt < maxAttempts
+    Pending --> Sent: 退避到期重新下发（attempt+1）
     Success --> [*]
     Failed --> [*]
     Timeout --> [*]
 ```
+
+> 重试期间成员在灰度批次中保持 RUNNING；只有 attempt 耗尽进入 FAILED/TIMEOUT 才计入失败率。
+> 设备进度携带 `attempt`，旧 attempt 的 QoS1 重复回执会被丢弃，避免重复推进重试次数。
 
 ### 4.3.1 OTA 灰度批次状态
 
@@ -553,6 +559,9 @@ erDiagram
         varchar status "PENDING/SENT/DOWNLOADING/SUCCESS/FAILED/TIMEOUT"
         int progress "进度 0-100"
         varchar error "失败原因"
+        int attempt "当前尝试次数"
+        int max_attempts "最大尝试次数"
+        timestamp next_attempt_at "下次重试时间"
         timestamp sent_at
         timestamp updated_at "超时巡检基准"
         timestamp finished_at

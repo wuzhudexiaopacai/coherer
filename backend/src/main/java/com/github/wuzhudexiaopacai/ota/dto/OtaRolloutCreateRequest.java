@@ -40,6 +40,11 @@ public class OtaRolloutCreateRequest {
     @Max(value = 100, message = "失败率阈值最大 100")
     private Integer failureThresholdPercent;
 
+    /** 每台设备失败/超时后的最大尝试次数，默认 1 */
+    @Min(value = 1, message = "最大尝试次数至少 1")
+    @Max(value = 5, message = "最大尝试次数最多 5")
+    private Integer maxAttempts;
+
     /** false 时每批完成后暂停，等待人工恢复 */
     private Boolean autoAdvance;
 }

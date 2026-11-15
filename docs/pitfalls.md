@@ -381,6 +381,20 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 的进行中任务按幂等复用，靠设备任务表唯一约束兜底。
 **验证**：单测覆盖批次推进；真实灰度中第 1/2 批按顺序完成。
 
+### 11.9 重试会把 QoS1 旧回执算成新一次失败
+
+**现象**：任务失败进入重试后，设备上一轮重复投递的 FAILED 回执又触发一次重试，attempt 被多推进。
+**修复**：OTA 指令和进度都携带 `attempt`；平台只接受与当前 `attempt` 一致的回执，
+退避窗口内（PENDING + nextAttemptAt 非空）的旧进度直接忽略。
+**验证**：`maxAttempts=2` 实测 attempt 1 → PENDING(attempt 2) → 重发 → FAILED(attempt 2/2) 终止。
+
+### 11.10 重试调度必须先抢占再发 MQTT
+
+**现象**：多实例同时跑重试巡检时，同一 PENDING 任务可能被两个实例各发一次。
+**修复**：先用条件更新（`id + status=PENDING + attempt + next_attempt_at`）清空 next_attempt_at 抢占，
+更新成功的一方才发布 MQTT；崩溃残留的 PENDING 超过 120 秒后再兜底补发。
+**验证**：单测 `retryDueTask_redispatchesWithNextAttempt`；日志中同一 taskId 每次 attempt 只下发一次。
+
 ## 12. 提交索引
 
 | 提交 | 内容 |

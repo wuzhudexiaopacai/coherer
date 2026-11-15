@@ -50,6 +50,9 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
     @Value("${coherer.ota.task-timeout-seconds:600}")
     private long taskTimeoutSeconds;
 
+    @Value("${coherer.ota.retry-backoff-seconds:30}")
+    private long retryBackoffSeconds;
+
     /**
      * 创建并下发 OTA 任务。
      *
@@ -71,28 +74,29 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         if (!firmware.getProductId().equals(device.getProductId())) {
             throw new BizException(409, "固件与设备产品不匹配");
         }
-        OtaTask task = dispatch(firmware, device, operator, null, null);
+        int maxAttempts = request.getMaxAttempts() == null ? 1 : request.getMaxAttempts();
+        OtaTask task = dispatch(firmware, device, operator, null, null, maxAttempts);
         return toVO(task, firmware);
     }
 
     /**
      * 供灰度批次调度使用：调用方已完成目标与数据范围校验。
-     * 返回落库后的任务；下发失败时任务状态为 FAILED。
+     * 返回落库后的任务；可重试的失败会回到 PENDING，等待重试调度。
      */
     public OtaTaskDispatch startForDevice(Firmware firmware, Device device, String operator,
-                                          Long rolloutId, Integer batchNo) {
+                                          Long rolloutId, Integer batchNo, int maxAttempts) {
         if ("DISABLED".equals(device.getStatus())) {
             throw new BizException(409, "设备已禁用");
         }
         if (!firmware.getProductId().equals(device.getProductId())) {
             throw new BizException(409, "固件与设备产品不匹配");
         }
-        OtaTask task = dispatch(firmware, device, operator, rolloutId, batchNo);
+        OtaTask task = dispatch(firmware, device, operator, rolloutId, batchNo, maxAttempts);
         return new OtaTaskDispatch(task.getId(), task.getStatus(), task.getError());
     }
 
     private OtaTask dispatch(Firmware firmware, Device device, String operator,
-                             Long rolloutId, Integer batchNo) {
+                             Long rolloutId, Integer batchNo, int maxAttempts) {
         Long active = baseMapper.selectCount(Wrappers.<OtaTask>lambdaQuery()
                 .eq(OtaTask::getDeviceId, device.getDeviceId())
                 .in(OtaTask::getStatus, List.of("PENDING", "SENT", "DOWNLOADING")));
@@ -123,6 +127,8 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         task.setBatchNo(batchNo);
         task.setStatus("PENDING");
         task.setProgress(0);
+        task.setAttempt(1);
+        task.setMaxAttempts(Math.max(1, maxAttempts));
         task.setCreatedBy(operator);
         task.setCreatedAt(now);
         task.setUpdatedAt(now);
@@ -137,7 +143,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
         if (device.getHostId() != null) {
             IotHost host = hostLookupService.getById(device.getHostId());
             if (host == null || "DISABLED".equals(host.getStatus())) {
-                markFailed(task, "设备所属主机不可用");
+                failOrRetry(task, "设备所属主机不可用", "FAILED");
                 return task;
             }
             hostKey = host.getHostId();
@@ -148,10 +154,10 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
             String url = firmwareService.downloadUrl(firmware, device.getDeviceId());
             published = otaPublisher.publishOta(tenantId, device.getDeviceId(),
                     hostKey, task.getId(), firmware.getId(), firmware.getVersion(), url,
-                    firmware.getSha256(), firmware.getSizeBytes());
+                    firmware.getSha256(), firmware.getSizeBytes(), task.getAttempt());
         } catch (Exception e) {
             log.warn("OTA 任务下发异常 taskId={} err={}", task.getId(), e.getMessage());
-            markFailed(task, "OTA 指令生成或下发失败");
+            failOrRetry(task, "OTA 指令生成或下发失败", "FAILED");
             return task;
         }
         OffsetDateTime sentAt = OffsetDateTime.now();
@@ -173,7 +179,7 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
             }
             meterRegistry.counter("coherer.ota.dispatched").increment();
         } else {
-            markFailed(task, "MQTT 通道未连接，OTA 指令未下发");
+            failOrRetry(task, "MQTT 通道未连接，OTA 指令未下发", "FAILED");
             meterRegistry.counter("coherer.ota.dispatched", "result", "failed").increment();
         }
         return task;
@@ -203,51 +209,193 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
                 .toList();
     }
 
-    /** 长时间无进度的任务置为 TIMEOUT。 */
+    /** 长时间无进度的任务：可重试则回到 PENDING，否则终态 TIMEOUT。 */
     @Scheduled(fixedDelayString = "${coherer.ota.timeout-sweep-interval-ms:30000}")
     public void sweepTimeouts() {
         OffsetDateTime deadline = OffsetDateTime.now().minusSeconds(taskTimeoutSeconds);
         try {
-            int pending = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
-                    .eq(OtaTask::getStatus, "PENDING")
-                    .lt(OtaTask::getUpdatedAt, deadline)
-                    .set(OtaTask::getStatus, "TIMEOUT")
-                    .set(OtaTask::getError, "任务创建后未能下发")
-                    .set(OtaTask::getUpdatedAt, OffsetDateTime.now())
-                    .set(OtaTask::getFinishedAt, OffsetDateTime.now()));
-            int sent = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
+            List<OtaTask> expired = new java.util.ArrayList<>();
+            expired.addAll(baseMapper.selectList(Wrappers.<OtaTask>lambdaQuery()
                     .eq(OtaTask::getStatus, "SENT")
                     .lt(OtaTask::getSentAt, deadline)
-                    .set(OtaTask::getStatus, "TIMEOUT")
-                    .set(OtaTask::getError, "设备未在超时时间内完成升级")
-                    .set(OtaTask::getUpdatedAt, OffsetDateTime.now())
-                    .set(OtaTask::getFinishedAt, OffsetDateTime.now()));
-            int downloading = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
+                    .last("limit 200")));
+            expired.addAll(baseMapper.selectList(Wrappers.<OtaTask>lambdaQuery()
                     .eq(OtaTask::getStatus, "DOWNLOADING")
                     .lt(OtaTask::getUpdatedAt, deadline)
-                    .set(OtaTask::getStatus, "TIMEOUT")
-                    .set(OtaTask::getError, "升级进度长时间未更新")
-                    .set(OtaTask::getUpdatedAt, OffsetDateTime.now())
-                    .set(OtaTask::getFinishedAt, OffsetDateTime.now()));
-            int updated = pending + sent + downloading;
+                    .last("limit 200")));
+            int updated = 0;
+            for (OtaTask task : expired) {
+                String error = "SENT".equals(task.getStatus())
+                        ? "设备未在超时时间内完成升级"
+                        : "升级进度长时间未更新";
+                failOrRetry(task, error, "TIMEOUT");
+                updated++;
+            }
             if (updated > 0) {
-                meterRegistry.counter("coherer.ota.timeout").increment(updated);
-                log.info("OTA 超时巡检：{} 条任务置为 TIMEOUT", updated);
+                log.info("OTA 超时巡检：处理 {} 条超时任务（含重试）", updated);
             }
         } catch (Exception e) {
             log.warn("OTA 超时巡检失败: {}", e.getMessage());
         }
     }
 
-    private void markFailed(OtaTask task, String error) {
-        task.setStatus("FAILED");
+    /** 重试到期的 PENDING 任务，以及进程崩溃遗留的长时间 PENDING。 */
+    @Scheduled(fixedDelayString = "${coherer.ota.retry-sweep-interval-ms:10000}",
+            initialDelayString = "${coherer.ota.retry-sweep-initial-delay-ms:15000}")
+    public void retryDueTasks() {
+        OffsetDateTime now = OffsetDateTime.now();
+        try {
+            List<OtaTask> due = baseMapper.selectList(Wrappers.<OtaTask>lambdaQuery()
+                    .eq(OtaTask::getStatus, "PENDING")
+                    .isNotNull(OtaTask::getNextAttemptAt)
+                    .le(OtaTask::getNextAttemptAt, now)
+                    .orderByAsc(OtaTask::getNextAttemptAt)
+                    .last("limit 50"));
+            for (OtaTask task : due) {
+                redispatch(task, now, true);
+            }
+            List<OtaTask> stale = baseMapper.selectList(Wrappers.<OtaTask>lambdaQuery()
+                    .eq(OtaTask::getStatus, "PENDING")
+                    .isNull(OtaTask::getNextAttemptAt)
+                    .lt(OtaTask::getUpdatedAt, now.minusSeconds(120))
+                    .orderByAsc(OtaTask::getUpdatedAt)
+                    .last("limit 50"));
+            for (OtaTask task : stale) {
+                redispatch(task, now, false);
+            }
+        } catch (Exception e) {
+            log.warn("OTA 重试巡检失败: {}", e.getMessage());
+        }
+    }
+
+    private void redispatch(OtaTask task, OffsetDateTime now, boolean hasNextAttempt) {
+        var claim = Wrappers.<OtaTask>lambdaUpdate()
+                .eq(OtaTask::getId, task.getId())
+                .eq(OtaTask::getStatus, "PENDING")
+                .eq(OtaTask::getAttempt, task.getAttempt());
+        if (hasNextAttempt) {
+            claim.eq(OtaTask::getNextAttemptAt, task.getNextAttemptAt());
+        } else {
+            claim.isNull(OtaTask::getNextAttemptAt)
+                    .lt(OtaTask::getUpdatedAt, now.minusSeconds(120));
+        }
+        claim.set(OtaTask::getNextAttemptAt, null)
+                .set(OtaTask::getUpdatedAt, now);
+        // 先抢占，保证多实例下同一任务只有一个实例重发 MQTT
+        if (baseMapper.update(null, claim) == 0) {
+            return;
+        }
+        task.setNextAttemptAt(null);
+        task.setUpdatedAt(now);
+
+        Firmware firmware = firmwareMapper.selectById(task.getFirmwareId());
+        Device device = deviceLookupService.getByDeviceId(task.getDeviceId());
+        if (firmware == null || device == null || "DISABLED".equals(device.getStatus())) {
+            failOrRetry(task, device == null ? "设备不存在" : "设备已禁用", "FAILED");
+            return;
+        }
+        String hostKey = null;
+        if (device.getHostId() != null) {
+            IotHost host = hostLookupService.getById(device.getHostId());
+            if (host == null || "DISABLED".equals(host.getStatus())) {
+                failOrRetry(task, "设备所属主机不可用", "FAILED");
+                return;
+            }
+            hostKey = host.getHostId();
+        }
+        boolean published;
+        try {
+            String url = firmwareService.downloadUrl(firmware, device.getDeviceId());
+            published = otaPublisher.publishOta(task.getTenantId(), device.getDeviceId(),
+                    hostKey, task.getId(), firmware.getId(), firmware.getVersion(), url,
+                    firmware.getSha256(), firmware.getSizeBytes(), task.getAttempt());
+        } catch (Exception e) {
+            failOrRetry(task, "OTA 指令生成或下发失败", "FAILED");
+            return;
+        }
+        if (!published) {
+            failOrRetry(task, "MQTT 通道未连接，OTA 指令未下发", "FAILED");
+            return;
+        }
+        OffsetDateTime sentAt = OffsetDateTime.now();
+        int updated = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
+                .eq(OtaTask::getId, task.getId())
+                .eq(OtaTask::getStatus, "PENDING")
+                .eq(OtaTask::getAttempt, task.getAttempt())
+                .set(OtaTask::getStatus, "SENT")
+                .set(OtaTask::getSentAt, sentAt)
+                .set(OtaTask::getUpdatedAt, sentAt)
+                .set(OtaTask::getNextAttemptAt, null));
+        if (updated > 0) {
+            task.setStatus("SENT");
+            task.setSentAt(sentAt);
+            meterRegistry.counter("coherer.ota.retried").increment();
+            log.info("OTA 重试已下发 deviceId={} taskId={} attempt={}/{}",
+                    task.getDeviceId(), task.getId(), task.getAttempt(), task.getMaxAttempts());
+        }
+    }
+
+    /**
+     * 失败处理：还有重试次数则回到 PENDING 并安排退避；否则落终态并通知灰度。
+     *
+     * @param terminalStatus FAILED（设备/通道失败）或 TIMEOUT（超时）
+     */
+    private void failOrRetry(OtaTask task, String error, String terminalStatus) {
+        String fromStatus = task.getStatus();
+        int attempt = task.getAttempt() == null ? 1 : task.getAttempt();
+        OffsetDateTime now = OffsetDateTime.now();
+        if (OtaRetryPolicy.canRetry(task)) {
+            int nextAttempt = attempt + 1;
+            OffsetDateTime nextAt = now.plusSeconds(
+                    OtaRetryPolicy.backoffSeconds(nextAttempt, retryBackoffSeconds));
+            int updated = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
+                    .eq(OtaTask::getId, task.getId())
+                    .eq(OtaTask::getStatus, fromStatus)
+                    .eq(OtaTask::getAttempt, attempt)
+                    .set(OtaTask::getStatus, "PENDING")
+                    .set(OtaTask::getAttempt, nextAttempt)
+                    .set(OtaTask::getError, error)
+                    .set(OtaTask::getNextAttemptAt, nextAt)
+                    .set(OtaTask::getUpdatedAt, now)
+                    .set(OtaTask::getFinishedAt, null));
+            if (updated > 0) {
+                task.setStatus("PENDING");
+                task.setAttempt(nextAttempt);
+                task.setError(error);
+                task.setNextAttemptAt(nextAt);
+                task.setUpdatedAt(now);
+                task.setFinishedAt(null);
+                meterRegistry.counter("coherer.ota.retry_scheduled").increment();
+                log.info("OTA 失败，{} 秒后重试 deviceId={} taskId={} attempt={}/{}",
+                        OtaRetryPolicy.backoffSeconds(nextAttempt, retryBackoffSeconds),
+                        task.getDeviceId(), task.getId(), nextAttempt, task.getMaxAttempts());
+            }
+            return;
+        }
+
+        int updated = baseMapper.update(null, Wrappers.<OtaTask>lambdaUpdate()
+                .eq(OtaTask::getId, task.getId())
+                .eq(OtaTask::getStatus, fromStatus)
+                .eq(OtaTask::getAttempt, attempt)
+                .set(OtaTask::getStatus, terminalStatus)
+                .set(OtaTask::getError, error)
+                .set(OtaTask::getNextAttemptAt, null)
+                .set(OtaTask::getUpdatedAt, now)
+                .set(OtaTask::getFinishedAt, now));
+        if (updated == 0) {
+            return;
+        }
+        task.setStatus(terminalStatus);
         task.setError(error);
-        task.setUpdatedAt(OffsetDateTime.now());
-        task.setFinishedAt(OffsetDateTime.now());
-        updateById(task);
+        task.setNextAttemptAt(null);
+        task.setUpdatedAt(now);
+        task.setFinishedAt(now);
+        if ("TIMEOUT".equals(terminalStatus)) {
+            meterRegistry.counter("coherer.ota.timeout").increment();
+        }
         if (task.getRolloutId() != null) {
             eventPublisher.publishEvent(new OtaTaskFinishedEvent(task.getId(),
-                    task.getRolloutId(), task.getDeviceId(), "FAILED", error));
+                    task.getRolloutId(), task.getDeviceId(), terminalStatus, error));
         }
     }
 

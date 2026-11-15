@@ -261,7 +261,8 @@ public class MqttGateway implements CommandPublisher, OtaPublisher {
     @Override
     public boolean publishOta(String tenantId, String deviceId, String hostKey,
                               Long taskId, Long firmwareId, String version,
-                              String downloadUrl, String sha256, long sizeBytes) {
+                              String downloadUrl, String sha256, long sizeBytes,
+                              int attempt) {
         if (client == null || !client.isConnected()) {
             log.warn("MQTT 未连接，OTA 指令未下发 deviceId={} taskId={}", deviceId, taskId);
             return false;
@@ -278,13 +279,14 @@ public class MqttGateway implements CommandPublisher, OtaPublisher {
                     "url", downloadUrl,
                     "sha256", sha256,
                     "size", sizeBytes,
+                    "attempt", attempt,
                     "ts", System.currentTimeMillis()));
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
             client.publish(topic, message);
             meterRegistry.counter("coherer.ota.sent").increment();
-            log.info("OTA 指令已下发 deviceId={} taskId={} version={} viaHost={}",
-                    deviceId, taskId, version, hostKey != null);
+            log.info("OTA 指令已下发 deviceId={} taskId={} version={} attempt={} viaHost={}",
+                    deviceId, taskId, version, attempt, hostKey != null);
             return true;
         } catch (Exception e) {
             log.warn("OTA 指令下发失败 deviceId={} taskId={} err={}",

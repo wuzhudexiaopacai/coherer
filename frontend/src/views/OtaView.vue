@@ -48,7 +48,8 @@ const startDialog = reactive({
   visible: false,
   loading: false,
   firmware: null as Firmware | null,
-  deviceId: null as string | null
+  deviceId: null as string | null,
+  maxAttempts: 1
 })
 
 const rolloutDialog = reactive({
@@ -61,6 +62,7 @@ const rolloutDialog = reactive({
   deviceIds: [] as string[],
   batchSize: 10,
   failureThresholdPercent: 20,
+  maxAttempts: 1,
   autoAdvance: true
 })
 
@@ -164,6 +166,7 @@ function openRollout(firmware: Firmware) {
   rolloutDialog.deviceIds = []
   rolloutDialog.batchSize = 10
   rolloutDialog.failureThresholdPercent = 20
+  rolloutDialog.maxAttempts = 1
   rolloutDialog.autoAdvance = true
   rolloutDialog.visible = true
 }
@@ -198,6 +201,7 @@ async function submitRollout() {
         : undefined,
       batchSize: rolloutDialog.batchSize,
       failureThresholdPercent: rolloutDialog.failureThresholdPercent,
+      maxAttempts: rolloutDialog.maxAttempts,
       autoAdvance: rolloutDialog.autoAdvance
     })
     ElMessage.success(`灰度批次已创建，共 ${detail.totalCount} 台设备 / ${detail.totalBatches} 批`)
@@ -375,6 +379,7 @@ async function removeFirmware(firmware: Firmware) {
 function openStart(firmware: Firmware) {
   startDialog.firmware = firmware
   startDialog.deviceId = devices.value[0]?.deviceId ?? null
+  startDialog.maxAttempts = 1
   startDialog.visible = true
 }
 
@@ -398,7 +403,11 @@ async function submitStart() {
   }
   startDialog.loading = true
   try {
-    const task = await api.startOta(startDialog.deviceId, startDialog.firmware.id)
+    const task = await api.startOta(
+      startDialog.deviceId,
+      startDialog.firmware.id,
+      startDialog.maxAttempts
+    )
     ElMessage.success(task.status === 'FAILED' ? `下发失败：${task.error ?? ''}` : '升级指令已下发')
     startDialog.visible = false
     taskDeviceId.value = startDialog.deviceId
@@ -686,6 +695,11 @@ onBeforeUnmount(() => {
             />
           </template>
         </el-table-column>
+        <el-table-column label="尝试" width="86">
+          <template #default="{ row }">
+            <span class="mono tiny">{{ row.attempt ?? 1 }}/{{ row.maxAttempts ?? 1 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="下发时间" width="150">
           <template #default="{ row }">
             <span class="tiny">{{ fmtDateTime(row.createdAt) }}</span>
@@ -769,6 +783,11 @@ onBeforeUnmount(() => {
               :value="device.deviceId"
             />
           </el-select>
+        </label>
+        <label class="field">
+          <span class="field-label">失败重试次数</span>
+          <el-input-number v-model="startDialog.maxAttempts" :min="1" :max="5" />
+          <span class="field-hint">1 表示失败或超时后不重试；重试按 30 秒 × 次数退避</span>
         </label>
         <el-alert
           type="info"
@@ -855,6 +874,10 @@ onBeforeUnmount(() => {
               :step="5"
             />
           </label>
+          <label class="field">
+            <span class="field-label">单设备重试次数</span>
+            <el-input-number v-model="rolloutDialog.maxAttempts" :min="1" :max="5" />
+          </label>
           <label class="field switch-field">
             <span class="field-label">自动推进下一批</span>
             <el-switch v-model="rolloutDialog.autoAdvance" />
@@ -888,6 +911,7 @@ onBeforeUnmount(() => {
             <span class="mono tiny">v{{ rolloutDetail.data.firmwareVersion || '—' }}</span>
             <span class="tiny">{{ targetLabel(rolloutDetail.data) }}</span>
             <span class="tiny">{{ rolloutDetail.data.currentBatch }}/{{ rolloutDetail.data.totalBatches }} 批</span>
+            <span class="tiny">重试上限 {{ rolloutDetail.data.maxAttempts }} 次</span>
           </div>
           <el-alert
             v-if="rolloutDetail.data.pauseReason"
@@ -1150,7 +1174,7 @@ onBeforeUnmount(() => {
 
 .strategy-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr 1fr auto;
   gap: 16px;
   align-items: end;
 }

@@ -26,6 +26,15 @@ public class OtaTask {
 
     private String error;
 
+    /** 当前已尝试次数，首次为 1 */
+    private Integer attempt;
+
+    /** 最大尝试次数，1 表示不重试 */
+    private Integer maxAttempts;
+
+    /** 下一次重试时间 */
+    private OffsetDateTime nextAttemptAt;
+
     private Long rolloutId;
 
     private Integer batchNo;

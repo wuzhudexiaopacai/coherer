@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -234,14 +235,14 @@ class OtaRolloutServiceTest {
                         member("dev-1", 1, "RUNNING"), member("dev-2", 1, "RUNNING")));
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device("dev-1", 100L));
         when(deviceLookupService.getByDeviceId("dev-2")).thenReturn(device("dev-2", 100L));
-        when(otaService.startForDevice(any(), any(), any(), eq(50L), eq(1)))
+        when(otaService.startForDevice(any(), any(), any(), eq(50L), eq(1), anyInt()))
                 .thenReturn(new OtaService.OtaTaskDispatch(1L, "SENT", null));
 
         service.advance(50L);
 
         assertEquals("RUNNING", rollout.getStatus());
         assertEquals(1, rollout.getCurrentBatch());
-        verify(otaService, times(2)).startForDevice(any(), any(), any(), eq(50L), eq(1));
+        verify(otaService, times(2)).startForDevice(any(), any(), any(), eq(50L), eq(1), anyInt());
     }
 
     @Test

@@ -60,6 +60,7 @@ class VirtualDevice(threading.Thread):
         self.insecure = insecure
         self.ota_fail = ota_fail
         self.ota_in_progress = False
+        self.ota_attempt = 1
         self.firmware_version = "1.0.0"
         self.event_seq = 0
         self.last_high_temp_event = 0.0
@@ -291,7 +292,9 @@ class VirtualDevice(threading.Thread):
             self._report_ota(task_id, "FAILED", 0, "设备已有升级进行中")
             return
         self.ota_in_progress = True
-        print(f"[{self.device_id}] 收到 OTA taskId={task_id} version={data.get('version')}")
+        self.ota_attempt = int(data.get("attempt") or 1)
+        print(f"[{self.device_id}] 收到 OTA taskId={task_id}"
+              f" version={data.get('version')} attempt={self.ota_attempt}")
         threading.Thread(target=self._perform_ota, args=(task_id, data),
                          daemon=True).start()
 
@@ -351,8 +354,8 @@ class VirtualDevice(threading.Thread):
             self.ota_in_progress = False
 
     def _report_ota(self, task_id, status, progress, error=None):
-        payload = {"taskId": task_id, "status": status,
-                   "progress": progress, "ts": int(time.time() * 1000)}
+        payload = {"taskId": task_id, "status": status, "progress": progress,
+                   "attempt": self.ota_attempt, "ts": int(time.time() * 1000)}
         if error:
             payload["error"] = error
         try:

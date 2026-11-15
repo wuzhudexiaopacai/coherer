@@ -263,6 +263,9 @@ export interface OtaTask {
   status: OtaStatus
   progress: number
   error?: string
+  attempt?: number
+  maxAttempts?: number
+  nextAttemptAt?: string
   rolloutId?: string
   batchNo?: number
   createdBy?: string
@@ -293,6 +296,7 @@ export interface OtaRollout {
   status: OtaRolloutStatus
   batchSize: number
   failureThresholdPercent: number
+  maxAttempts: number
   autoAdvance: boolean
   pauseReason?: string
   currentBatch: number
@@ -332,5 +336,6 @@ export interface OtaRolloutCreateBody {
   deviceIds?: string[]
   batchSize: number
   failureThresholdPercent: number
+  maxAttempts?: number
   autoAdvance: boolean
 }

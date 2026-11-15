@@ -26,6 +26,8 @@ public class OtaRolloutVO {
 
     private Integer failureThresholdPercent;
 
+    private Integer maxAttempts;
+
     private Boolean autoAdvance;
 
     private String pauseReason;

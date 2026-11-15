@@ -1,9 +1,11 @@
 package com.github.wuzhudexiaopacai.ota.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -94,7 +96,7 @@ class OtaServiceTest {
     @Test
     void start_directDevice_publishesAndMarksSent() {
         when(publisher.publishOta(eq("default"), eq("dev-1"), isNull(), eq(88L), eq(10L),
-                eq("1.2.0"), eq("https://dl/signed"), eq("a".repeat(64)), eq(128L)))
+                eq("1.2.0"), eq("https://dl/signed"), eq("a".repeat(64)), eq(128L), eq(1)))
                 .thenReturn(true);
 
         var vo = service.start(request(), scope(100L), "admin");
@@ -112,13 +114,13 @@ class OtaServiceTest {
         host.setStatus("ONLINE");
         when(hostLookupService.getById(7L)).thenReturn(host);
         when(publisher.publishOta(any(), any(), eq("host_7"), any(), any(), any(), any(), any(),
-                anyLong())).thenReturn(true);
+                anyLong(), anyInt())).thenReturn(true);
 
         var vo = service.start(request(), scope(100L), "admin");
 
         assertEquals("SENT", vo.getStatus());
         verify(publisher).publishOta("default", "dev-1", "host_7", 88L, 10L, "1.2.0",
-                "https://dl/signed", "a".repeat(64), 128L);
+                "https://dl/signed", "a".repeat(64), 128L, 1);
     }
 
     @Test
@@ -131,7 +133,7 @@ class OtaServiceTest {
         assertEquals("FAILED", vo.getStatus());
         assertEquals("设备所属主机不可用", vo.getError());
         verify(publisher, never()).publishOta(any(), any(), any(), any(), any(), any(), any(), any(),
-                anyLong());
+                anyLong(), anyInt());
     }
 
     @Test
@@ -172,12 +174,50 @@ class OtaServiceTest {
     @Test
     void start_mqttUnavailable_marksFailed() {
         when(publisher.publishOta(any(), any(), any(), any(), any(), any(), any(), any(),
-                anyLong())).thenReturn(false);
+                anyLong(), anyInt())).thenReturn(false);
 
         var vo = service.start(request(), scope(100L), "admin");
 
         assertEquals("FAILED", vo.getStatus());
         assertEquals("MQTT 通道未连接，OTA 指令未下发", vo.getError());
+    }
+
+    @Test
+    void start_mqttUnavailable_withRetry_schedulesRetry() {
+        when(publisher.publishOta(any(), any(), any(), any(), any(), any(), any(), any(),
+                anyLong(), anyInt())).thenReturn(false);
+        OtaStartRequest request = request();
+        request.setMaxAttempts(3);
+
+        var vo = service.start(request, scope(100L), "admin");
+
+        assertEquals("PENDING", vo.getStatus());
+        assertEquals(2, vo.getAttempt());
+        assertNotNull(vo.getNextAttemptAt());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void retryDueTask_redispatchesWithNextAttempt() {
+        OtaTask due = new OtaTask();
+        due.setId(99L);
+        due.setDeviceId("dev-1");
+        due.setFirmwareId(10L);
+        due.setTenantId("default");
+        due.setStatus("PENDING");
+        due.setAttempt(2);
+        due.setMaxAttempts(3);
+        due.setNextAttemptAt(java.time.OffsetDateTime.now().minusSeconds(1));
+        when(taskMapper.selectList(any())).thenReturn(List.of(due), List.of());
+        when(firmwareMapper.selectById(10L)).thenReturn(firmware);
+        when(publisher.publishOta(any(), any(), any(), any(), any(), any(), any(), any(),
+                anyLong(), anyInt())).thenReturn(true);
+
+        service.retryDueTasks();
+
+        assertEquals("SENT", due.getStatus());
+        verify(publisher).publishOta("default", "dev-1", null, 99L, 10L, "1.2.0",
+                "https://dl/signed", "a".repeat(64), 128L, 2);
     }
 
     @Test

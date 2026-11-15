@@ -272,11 +272,11 @@ export const api = {
   deleteFirmware: (id: string) =>
     request<void>({ url: `/ota/firmwares/${id}`, method: 'delete' }),
 
-  startOta: (deviceId: string, firmwareId: string) =>
+  startOta: (deviceId: string, firmwareId: string, maxAttempts?: number) =>
     request<OtaTask>({
       url: '/ota/tasks',
       method: 'post',
-      data: { deviceId, firmwareId }
+      data: { deviceId, firmwareId, maxAttempts }
     }),
 
   listOtaTasks: (deviceId: string, limit = 20) =>

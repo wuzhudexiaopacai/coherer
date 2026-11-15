@@ -146,3 +146,10 @@ coherer:
     # 任务超时与巡检间隔：超过该时长无进度即置为 TIMEOUT
     task-timeout-seconds: ${COHERER_OTA_TASK_TIMEOUT_SECONDS:600}
     timeout-sweep-interval-ms: ${COHERER_OTA_TIMEOUT_SWEEP_INTERVAL_MS:30000}
+    # 灰度批次推进间隔（一次只推进一个 batch）
+    rollout-sweep-interval-ms: ${COHERER_OTA_ROLLOUT_SWEEP_INTERVAL_MS:5000}
+    rollout-sweep-initial-delay-ms: ${COHERER_OTA_ROLLOUT_SWEEP_INITIAL_DELAY_MS:10000}
+    # 失败重试：线性退避基数（秒）、巡检间隔
+    retry-backoff-seconds: ${COHERER_OTA_RETRY_BACKOFF_SECONDS:30}
+    retry-sweep-interval-ms: ${COHERER_OTA_RETRY_SWEEP_INTERVAL_MS:10000}
+    retry-sweep-initial-delay-ms: ${COHERER_OTA_RETRY_SWEEP_INITIAL_DELAY_MS:15000}
