@@ -26,6 +26,15 @@ json_get() {
   python -c 'import sys,json; d=json.load(sys.stdin); print(eval(sys.argv[1], {"d": d}))' "$1"
 }
 
+# Git Bash 的 curl/python 是原生 Windows 程序，需要 Windows 路径；Linux 直接使用原路径
+native_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 echo "[1/7] 登录 ${BASE_URL}"
 LOGIN="$(curl -sk "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
   -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}")"
@@ -50,14 +59,14 @@ echo "[3/7] 上传固件"
 head -c 1048576 /dev/urandom > "$TMP_DIR/firmware.bin"
 VERSION="e2e-$SUFFIX"
 # Git Bash 的 curl/python 是原生 Windows 程序，文件参数需要 Windows 路径
-FIRMWARE_WIN="$(cygpath -w "$TMP_DIR/firmware.bin")"
+FIRMWARE_WIN="$(native_path "$TMP_DIR/firmware.bin")"
 FIRMWARE="$(curl -sk "$BASE_URL/api/ota/firmwares" -H "$AUTH" \
   -F "productId=$PRODUCT_ID" -F "version=$VERSION" \
   -F "file=@$FIRMWARE_WIN;type=application/octet-stream")"
 FIRMWARE_ID="$(printf '%s' "$FIRMWARE" | json_get 'd["data"]["id"]')"
 
 echo "[4/7] 启动模拟器 deviceId=$DEVICE_ID"
-CREDS_WIN="$(cygpath -w "$TMP_DIR/creds.json")"
+CREDS_WIN="$(native_path "$TMP_DIR/creds.json")"
 (
   cd "$ROOT/simulator"
   python -u simulator.py --credentials "$CREDS_WIN" --tls
