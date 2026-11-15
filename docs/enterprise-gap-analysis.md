@@ -209,7 +209,7 @@ K8s/Helm、EMQX/PG/Redis/TDengine 高可用、备份恢复演练、mTLS、审计
 | A5 传输安全 | ✅ 2026-11-15 | REST HTTPS + WSS（Nginx 8443，本地 CA）；后端→EMQX TLS 8883；PostgreSQL `ssl=on` + 后端 `sslmode=verify-full`；所有基础设施端口收敛到 127.0.0.1；Redis requirepass + TDengine 强制口令；指标端点要求内部令牌；PG/EMQX/TDengine/Redis 备份恢复脚本已验证 |
 | B 可观测性 | ✅ 2026-11-14 | Prometheus + Grafana 12 面板 + Alertmanager（critical 路由/webhook/2 条抑制规则）；Zipkin 链路追踪；ECS 日志带 traceId；审计日志含 traceId/结果/UA/真实 IP；liveness/readiness 分组 |
 | C 可靠性/M3 | 🟡 部分完成 | **遥测幂等去重 + 有界队列批量写入 + 停机冲刷**；**告警状态/计时迁移 Redis**；**在线状态 TTL 兜底**；Kafka 分区与时间水位仍待做 |
-| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 291 单元测试 + 7 个真实 PG/Redis 集成测试（Flyway/项目隔离/灰度/重试/回退/Range）+ JaCoCo 门禁（65.6% 行 / 51.8% 分支，基线 60%/45%）+ OpenAPI、前端 11 个 Vitest + type-check/build、Compose/E2E 脚本**；覆盖率目标 80%/70%、外部 EMQX 集成测试待补 |
+| D 测试与 CI | 🟡 部分完成 | **GitHub Actions：后端 292 单元测试 + 7 个真实 PG/Redis 集成测试（Flyway/项目隔离/灰度/重试/回退/Range）+ JaCoCo 门禁（65.6% 行 / 51.8% 分支，基线 60%/45%）+ OpenAPI、前端 11 个 Vitest + type-check/build、Compose/E2E 脚本**；覆盖率目标 80%/70%、外部 EMQX 集成测试待补 |
 | E 功能补齐 | 🟡 部分完成 | **项目层（项目 → 空间 → 主机/设备、项目切换/管理、项目级过滤）、设备启停/删除/密钥轮换、用户管理、命令下发与回执、事件上报、边缘主机/网关、OTA 全链路已完成**；区间聚合、通知渠道、规则版本待做 |
 | F 生产化 | 🟡 部分完成 | **镜像、Nginx 同源部署、CI 镜像构建推送、备份恢复已完成**；K8s/Helm、HA、压测待做 |
 
