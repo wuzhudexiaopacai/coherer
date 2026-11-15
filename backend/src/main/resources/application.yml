@@ -41,6 +41,13 @@ server:
   # 8080 常被本机其他服务占用，Coherer 固定使用 8081
   port: 8081
 
+springdoc:
+  api-docs:
+    enabled: ${COHERER_OPENAPI_ENABLED:true}
+  swagger-ui:
+    enabled: ${COHERER_OPENAPI_ENABLED:true}
+    path: /swagger-ui.html
+
 management:
   endpoints:
     web:
@@ -115,6 +122,8 @@ coherer:
     # 首次启动初始化 admin 用户的口令
     admin-password: ${COHERER_ADMIN_PASSWORD}
   mqtt:
+    # 集成测试可关闭真实 Broker 连接，由测试配置提供录制型 Publisher
+    enabled: ${COHERER_MQTT_ENABLED:true}
     broker-host: ${COHERER_MQTT_BROKER_HOST:localhost}
     broker-port: ${COHERER_MQTT_BROKER_PORT:1883}
     # 后端 → EMQX 是否启用 TLS（8883）及 CA 证书路径

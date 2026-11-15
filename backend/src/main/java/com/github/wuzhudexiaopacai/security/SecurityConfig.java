@@ -54,7 +54,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/ota/download/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh",
                                 "/api/ping", "/actuator/health", "/actuator/health/**",
-                                "/actuator/prometheus", "/internal/**").permitAll()
+                                "/actuator/prometheus", "/internal/**",
+                                // OpenAPI 仅绑定 127.0.0.1:8081，不经过 Nginx 暴露
+                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
+                        .permitAll()
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
                         // RBAC：只读角色仅允许 GET；写操作要求 ADMIN / OPERATOR

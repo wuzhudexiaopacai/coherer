@@ -24,20 +24,28 @@ jobs:
           java-version: "21"
           cache: maven
 
-      - name: Run tests
-        working-directory: backend
-        run: mvn -B -ntp test
+      - name: Start integration test infrastructure
+        working-directory: deploy
+        run: docker compose -f docker-compose.test.yml up -d --wait
 
-      - name: Package
+      - name: Unit + integration tests (coverage gate)
         working-directory: backend
-        run: mvn -B -ntp -DskipTests package
+        run: mvn -B -ntp clean verify
+
+      - name: Stop integration test infrastructure
+        if: always()
+        working-directory: deploy
+        run: docker compose -f docker-compose.test.yml down -v
 
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-surefire-reports
-          path: backend/target/surefire-reports/
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+            backend/target/site/jacoco/
           if-no-files-found: ignore
 
       - name: Upload jar
@@ -93,6 +101,7 @@ jobs:
           cp ../backend/.env.example ../backend/.env
           docker compose config --quiet
           docker compose -f docker-compose.yml -f docker-compose.app.yml --profile app config --quiet
+          docker compose -f docker-compose.test.yml config --quiet
 
       - name: Validate Prometheus rules
         run: |

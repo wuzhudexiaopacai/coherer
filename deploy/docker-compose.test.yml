@@ -1,0 +1,31 @@
+# 集成测试专用基础设施：真实 PostgreSQL + Redis，独立端口/网络/卷，避免影响开发栈。
+# 用法：docker compose -f docker-compose.test.yml up -d --wait
+name: coherer-it
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: coherer-it-postgres
+    environment:
+      POSTGRES_DB: coherer
+      POSTGRES_USER: coherer
+      POSTGRES_PASSWORD: coherer-it-pass
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coherer -d coherer"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    container_name: coherer-it-redis
+    command: ["redis-server", "--requirepass", "coherer-it-pass"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a coherer-it-pass --no-auth-warning ping | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30

@@ -146,6 +146,27 @@ curl -H "Authorization: Bearer <accessToken>" \
   "http://localhost:8081/api/audit-logs?result=FAILURE"
 ```
 
+## 测试与接口文档
+
+```bash
+# 单元测试（272 个）
+cd backend && mvn test
+
+# 一键单元 + 集成测试 + 覆盖率门禁
+# 自动启动 deploy/docker-compose.test.yml（真实 PG16/Redis7，独立端口 55432/56379）
+./deploy/scripts/integration-test.sh
+
+# OTA 端到端：建产品/设备 → 上传固件 → 启动模拟器 → 等待 SUCCESS
+# 前置：compose app 栈已启动
+./deploy/scripts/e2e-ota.sh
+
+# OpenAPI / Swagger UI（后端仅绑定 127.0.0.1:8081，不经 Nginx 暴露）
+open http://localhost:8081/swagger-ui.html
+```
+
+CI 在 `mvn clean verify` 中执行：单元测试 + 5 个真实 PG/Redis 集成测试 + JaCoCo
+行/分支覆盖率门禁（当前基线 60%/45%，实测 62.6%/49.7%，后续按 ratchet 逐步提高到 80%/70%）。
+
 ## TLS 与备份恢复
 
 ```bash

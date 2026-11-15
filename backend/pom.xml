@@ -146,6 +146,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- OpenAPI：接口文档与 Swagger UI（仅本地/内网访问） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.8.9</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -153,6 +160,90 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- 集成测试（*IT）与 verify 生命周期绑定 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- 覆盖率：prepare-agent 收集单元/集成测试，verify 生成报告并卡门禁 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/dto/**</exclude>
+                                <exclude>**/vo/**</exclude>
+                                <exclude>**/entity/**</exclude>
+                                <exclude>**/config/**</exclude>
+                                <exclude>**/mapper/**</exclude>
+                                <exclude>**/CohererApplication*</exclude>
+                                <!-- 真实 Broker 适配层由 E2E/联调覆盖，不纳入单元覆盖率分母 -->
+                                <exclude>**/mqtt/MqttGateway*</exclude>
+                                <exclude>**/mqtt/MqttTlsSupport*</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/dto/**</exclude>
+                                <exclude>**/vo/**</exclude>
+                                <exclude>**/entity/**</exclude>
+                                <exclude>**/config/**</exclude>
+                                <exclude>**/mapper/**</exclude>
+                                <exclude>**/CohererApplication*</exclude>
+                                <exclude>**/mqtt/MqttGateway*</exclude>
+                                <exclude>**/mqtt/MqttTlsSupport*</exclude>
+                            </excludes>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.60</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.45</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -442,7 +442,44 @@ start 仍是 99，计算出的 length 为负数，`Content-Length` 设置失败�
 `StreamingResponseBody` 内部 `try (input) { transferTo }`，保证 S3/文件流关闭。
 **验证**：模拟器日志出现 `断点续传重试 offset=262144`，Nginx 访问日志连续 8 个 206（2MB / 256KB）。
 
-## 12. 提交索引
+## 12. 集成测试与交付
+
+### 12.1 Docker Desktop 29 的 npipe 与 Testcontainers 不兼容
+
+**现象**：Testcontainers 1.20/1.21 在 Windows 报
+`Could not find a valid Docker environment`；debug 日志显示
+`NpipeSocketClientProviderStrategy ... BadRequestException (Status 400 ... 空 info)`。
+Docker CLI/Compose 本身正常。
+**原因**：Docker Desktop 29 的 `dockerDesktopLinuxEngine` / `docker_cli` npipe 代理对
+docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
+**修复**：不依赖 Testcontainers 的本机 npipe，改用项目内
+`deploy/docker-compose.test.yml` 提供独立 PG16/Redis7（端口 55432/56379），
+测试通过环境变量连接；CI 也启动同一套容器。仍然是真实 PostgreSQL/Redis，不用 H2。
+**验证**：`./deploy/scripts/integration-test.sh` 跑通 Flyway V1–V21 与 5 个 OTA IT。
+
+### 12.2 集成测试数据库 URL 必须带 `stringtype=unspecified`
+
+**现象**：设备注册 500，日志为 `column "desired" is of type jsonb but expression is of type character varying`。
+**原因**：测试 JDBC URL 少了生产 URL 中的 `stringtype=unspecified`，MyBatis 写入 Map/JSON 时被当成 varchar。
+**修复**：IT_DB_URL 默认值补上 `?stringtype=unspecified`。
+**验证**：设备注册、影子创建与 OTA 全链路 IT 通过。
+
+### 12.3 E2E 脚本的两个 Windows/时序坑
+
+**现象**：上传固件 curl 静默失败；任务 SENT 但模拟器没收到 OTA。
+**原因**：Git Bash 的 curl/python 是原生 Windows 程序，`/tmp/...` 参数路径不可读；
+模拟器 `on_connect` 先打印“已连接”再 subscribe，脚本立即下发会落在订阅前。
+**修复**：文件参数用 `cygpath -w` 转 Windows 路径；连接后等待 3 秒再创建任务。
+**验证**：`./deploy/scripts/e2e-ota.sh` 稳定完成 1MB 固件升级。
+
+### 12.4 覆盖率门禁是 ratchet，不是一次性 80%
+
+**现状**：排除 DTO/VO/Entity/Config/Mapper 与真实 Broker 适配层后，行 62.6%、分支 49.7%；
+门禁先设 60%/45%，防止回退，后续每个功能补测并按 5% 步进提升到 80%/70%。
+**说明**：`MqttGateway` 由真实 EMQX/模拟器 E2E 覆盖，不进入 Mock 单元覆盖率分母；
+其余业务 Service 不得用排除来“美化”覆盖率。
+
+## 13. 提交索引
 
 | 提交 | 内容 |
 |---|---|
@@ -470,7 +507,7 @@ start 仍是 99，计算出的 length 为负数，`Content-Length` 设置失败�
 | `f1f42a7` | TDengine space_id tag/保留期 |
 | `042c79d` | 设备事件上报 |
 
-## 13. 仍建议优先处理
+## 14. 仍建议优先处理
 
 1. ~~写入前校验遥测 payload 长度，避免 TDengine 截断~~（已完成）
 2. ~~命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流~~（已完成）
