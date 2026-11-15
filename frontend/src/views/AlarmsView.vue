@@ -6,10 +6,12 @@ import { api } from '../api'
 import type { AlarmRecord, AlarmRule, ThingModel } from '../api/types'
 import { useProductStore } from '../stores/products'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const productStore = useProductStore()
+const projectStore = useProjectStore()
 const spaceStore = useSpaceStore()
 const auth = useAuthStore()
 const view = ref<'records' | 'rules'>('records')
@@ -47,6 +49,7 @@ async function loadRecords() {
       size: recordState.size,
       status: recordFilters.status || undefined,
       level: recordFilters.level || undefined,
+      projectId: projectStore.currentProjectId ?? undefined,
       spaceId: spaceStore.currentSpaceId ?? undefined
     })
     recordState.records = page.records
@@ -286,7 +289,7 @@ onMounted(async () => {
 })
 
 watch(
-  () => spaceStore.currentSpaceId,
+  () => [projectStore.currentProjectId, spaceStore.currentSpaceId],
   () => {
     recordState.current = 1
     if (view.value === 'records') {

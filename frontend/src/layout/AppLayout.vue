@@ -1,30 +1,33 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Box, Cpu, Document, Fold, Monitor, Odometer, OfficeBuilding, UploadFilled, User } from '@element-plus/icons-vue'
+import { Bell, Box, Cpu, Document, Fold, Folder, Monitor, Odometer, OfficeBuilding, UploadFilled, User } from '@element-plus/icons-vue'
 import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const projectStore = useProjectStore()
 const spaceStore = useSpaceStore()
 const menuOpen = ref(false)
 let unsubscribeRealtime: (() => void) | undefined
 
 onMounted(async () => {
-  // 服务端数据范围可能已调整：同步最新用户信息后再决定订阅与空间树
+  // 服务端数据范围可能已调整：同步最新用户信息后再决定订阅、项目与空间树
   try {
     await auth.refreshUser()
   } catch {
     // 刷新失败不阻塞页面，后续接口会按 401 统一跳转登录
   }
+  await projectStore.ensureLoaded(true)
+  await spaceStore.ensureLoaded(true)
   // 全平台角色才做全局通配符订阅；空间受限用户的通配符会被 ACL 拒绝
   if (auth.user?.spaceId == null) {
     unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
   }
-  void spaceStore.ensureLoaded(true)
 })
 
 onBeforeUnmount(() => unsubscribeRealtime?.())
@@ -36,10 +39,32 @@ async function handleUserCommand(command: string) {
   }
 }
 
+const projectValue = computed({
+  get: () => projectStore.currentProjectId ?? '',
+  set: (value: string) => projectStore.setCurrent(value || null)
+})
+
+const projectOptions = computed(() =>
+  projectStore.projects.map((project) => ({
+    id: project.id,
+    label: project.name,
+    disabled: project.status === 'DISABLED'
+  }))
+)
+
 const spaceValue = computed({
   get: () => spaceStore.currentSpaceId ?? '__all__',
   set: (value: string) => spaceStore.setCurrent(value === '__all__' ? null : value)
 })
+
+watch(
+  () => projectStore.currentProjectId,
+  async (current, previous) => {
+    if (current === previous) return
+    spaceStore.reset()
+    await spaceStore.ensureLoaded(true)
+  }
+)
 
 const spaceOptions = computed(() => {
   const allLabel = auth.user?.spaceId == null ? '全部空间' : '全部可见空间'
@@ -103,6 +128,15 @@ watch(
           <el-icon><Bell /></el-icon>
           <span>告警中心</span>
         </router-link>
+        <router-link
+          v-if="auth.user?.role === 'ADMIN'"
+          to="/projects"
+          class="nav-item"
+          active-class="active"
+        >
+          <el-icon><Folder /></el-icon>
+          <span>项目管理</span>
+        </router-link>
         <router-link to="/spaces" class="nav-item" active-class="active">
           <el-icon><OfficeBuilding /></el-icon>
           <span>空间管理</span>
@@ -152,6 +186,21 @@ watch(
           </nav>
         </div>
         <div class="topbar-right">
+          <el-select
+            v-model="projectValue"
+            class="project-select"
+            placeholder="选择项目"
+            aria-label="切换项目"
+            :disabled="projectOptions.length === 0"
+          >
+            <el-option
+              v-for="item in projectOptions"
+              :key="item.id"
+              :label="item.label"
+              :value="item.id"
+              :disabled="item.disabled"
+            />
+          </el-select>
           <el-select v-model="spaceValue" class="space-select" placeholder="全部空间" aria-label="切换空间">
             <el-option
               v-for="item in spaceOptions"
@@ -408,16 +457,21 @@ watch(
   gap: 14px;
 }
 
+.project-select {
+  width: 168px;
+}
+
 .space-select {
   width: 176px;
 }
 
-.space-select :deep(.el-select__wrapper) {
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 0 0 1px var(--border) inset;
-  border-radius: 10px;
-  min-height: 34px;
-}
+  .project-select :deep(.el-select__wrapper),
+  .space-select :deep(.el-select__wrapper) {
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 0 0 1px var(--border) inset;
+    border-radius: 10px;
+    min-height: 34px;
+  }
 
 .live-pill {
   display: inline-flex;

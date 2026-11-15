@@ -9,10 +9,12 @@ import LineAreaChart from '../components/LineAreaChart.vue'
 import DonutChart from '../components/DonutChart.vue'
 import { subscribeRealtime } from '../realtime/mqtt'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtNumber } from '../utils/format'
 
 const spaceStore = useSpaceStore()
+const projectStore = useProjectStore()
 const auth = useAuthStore()
 
 const overview = ref<Overview | null>(null)
@@ -50,7 +52,10 @@ const donutData = computed(() => {
 
 async function loadOverview() {
   try {
-    overview.value = await api.overview(spaceStore.currentSpaceId)
+    overview.value = await api.overview(
+      spaceStore.currentSpaceId,
+      projectStore.currentProjectId
+    )
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -58,7 +63,11 @@ async function loadOverview() {
 
 async function loadTrend() {
   try {
-    trend.value = await api.telemetryTrend(range.value, spaceStore.currentSpaceId)
+    trend.value = await api.telemetryTrend(
+      range.value,
+      spaceStore.currentSpaceId,
+      projectStore.currentProjectId
+    )
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -66,7 +75,11 @@ async function loadTrend() {
 
 async function loadRecent() {
   try {
-    recent.value = await api.recentTelemetry(8, spaceStore.currentSpaceId)
+    recent.value = await api.recentTelemetry(
+      8,
+      spaceStore.currentSpaceId,
+      projectStore.currentProjectId
+    )
   } catch (error) {
     if (loading.value) ElMessage.error((error as Error).message)
   }
@@ -78,7 +91,7 @@ async function setRange(hours: number) {
 }
 
 watch(
-  () => spaceStore.currentSpaceId,
+  () => [projectStore.currentProjectId, spaceStore.currentSpaceId],
   () => {
     void loadOverview()
     void loadTrend()

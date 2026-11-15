@@ -11,6 +11,7 @@ const HostsView = () => import('../views/HostsView.vue')
 const OtaView = () => import('../views/OtaView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
+const ProjectsView = () => import('../views/ProjectsView.vue')
 const UsersView = () => import('../views/UsersView.vue')
 const AuditLogsView = () => import('../views/AuditLogsView.vue')
 
@@ -70,10 +71,16 @@ const router = createRouter({
           meta: { title: '告警中心', subtitle: '告警记录 · 规则配置 · 确认与关闭' }
         },
         {
+          path: 'projects',
+          name: 'projects',
+          component: ProjectsView,
+          meta: { title: '项目管理', subtitle: '项目边界 · 空间/主机/设备归属', adminOnly: true }
+        },
+        {
           path: 'spaces',
           name: 'spaces',
           component: SpacesView,
-          meta: { title: '空间管理', subtitle: '项目 / 区域 / 楼栋 / 楼层统一空间树' }
+          meta: { title: '空间管理', subtitle: '项目下的区域 / 楼栋 / 楼层 / 房间空间树' }
         },
         {
           path: 'users',

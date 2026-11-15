@@ -11,6 +11,7 @@ import type {
   Overview,
   PageResult,
   Product,
+  Project,
   RegisterResult,
   Shadow,
   SpaceNode,
@@ -42,30 +43,47 @@ export const api = {
 
   logout: () => request<void>({ url: '/auth/logout', method: 'post' }),
 
-  overview: (spaceId?: string | null) =>
+  overview: (spaceId?: string | null, projectId?: string | null) =>
     request<Overview>({
       url: '/dashboard/overview',
       method: 'get',
-      params: spaceId ? { spaceId } : {}
+      params: {
+        ...(spaceId ? { spaceId } : {}),
+        ...(projectId ? { projectId } : {})
+      }
     }),
 
-  telemetryTrend: (hours = 24, spaceId?: string | null) =>
+  telemetryTrend: (hours = 24, spaceId?: string | null, projectId?: string | null) =>
     request<TrendPoint[]>({
       url: '/dashboard/telemetry-trend',
       method: 'get',
-      params: spaceId ? { hours, spaceId } : { hours }
+      params: {
+        hours,
+        ...(spaceId ? { spaceId } : {}),
+        ...(projectId ? { projectId } : {})
+      }
     }),
 
-  recentTelemetry: (limit = 10, spaceId?: string | null) =>
+  recentTelemetry: (limit = 10, spaceId?: string | null, projectId?: string | null) =>
     request<Telemetry[]>({
       url: '/dashboard/recent-telemetry',
       method: 'get',
-      params: spaceId ? { limit, spaceId } : { limit }
+      params: {
+        limit,
+        ...(spaceId ? { spaceId } : {}),
+        ...(projectId ? { projectId } : {})
+      }
     }),
 
-  spaceTree: () => request<SpaceNode[]>({ url: '/spaces/tree', method: 'get' }),
+  spaceTree: (projectId?: string | null) =>
+    request<SpaceNode[]>({
+      url: '/spaces/tree',
+      method: 'get',
+      params: projectId ? { projectId } : {}
+    }),
 
   createSpace: (body: {
+    projectId?: string
     parentId?: string
     name: string
     code?: string
@@ -73,6 +91,27 @@ export const api = {
     sort?: number
     description?: string
   }) => request<SpaceNode>({ url: '/spaces', method: 'post', data: body }),
+
+  listProjects: () => request<Project[]>({ url: '/projects', method: 'get' }),
+
+  getProject: (id: string) => request<Project>({ url: `/projects/${id}`, method: 'get' }),
+
+  createProject: (body: {
+    name: string
+    code?: string
+    description?: string
+    status?: string
+  }) => request<Project>({ url: '/projects', method: 'post', data: body }),
+
+  updateProject: (id: string, body: {
+    name?: string
+    code?: string
+    description?: string
+    status?: string
+  }) => request<Project>({ url: `/projects/${id}`, method: 'put', data: body }),
+
+  deleteProject: (id: string) =>
+    request<void>({ url: `/projects/${id}`, method: 'delete' }),
 
   deleteSpace: (id: string) =>
     request<void>({ url: `/spaces/${id}`, method: 'delete' }),
@@ -102,7 +141,8 @@ export const api = {
     current?: number
     size?: number
     keyword?: string
-    spaceId?: string
+    projectId?: string | null
+    spaceId?: string | null
   } = {}) => request<PageResult<Host>>({ url: '/hosts', method: 'get', params }),
 
   registerHost: (body: {
@@ -300,6 +340,7 @@ export const api = {
     current?: number
     size?: number
     productId?: string
+    projectId?: string | null
     status?: string
   } = {}) =>
     request<PageResult<OtaRollout>>({

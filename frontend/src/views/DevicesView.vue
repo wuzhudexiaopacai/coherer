@@ -8,11 +8,13 @@ import type { Device, RegisterResult } from '../api/types'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useProductStore } from '../stores/products'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const router = useRouter()
 const productStore = useProductStore()
+const projectStore = useProjectStore()
 const spaceStore = useSpaceStore()
 const auth = useAuthStore()
 
@@ -42,6 +44,7 @@ async function load() {
       keyword: filters.keyword || undefined,
       status: filters.status || undefined,
       productId: filters.productId ?? undefined,
+      projectId: projectStore.currentProjectId ?? undefined,
       spaceId: spaceStore.currentSpaceId ?? undefined
     })
     state.records = page.records
@@ -202,6 +205,11 @@ onMounted(async () => {
 
 watch(
   () => spaceStore.currentSpaceId,
+  () => applyFilters()
+)
+
+watch(
+  () => projectStore.currentProjectId,
   () => applyFilters()
 )
 </script>

@@ -5,13 +5,15 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { SpaceNode } from '../api/types'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 
 const spaceStore = useSpaceStore()
+const projectStore = useProjectStore()
 const auth = useAuthStore()
 
 const typeLabels: Record<string, string> = {
-  PROJECT: '项目',
+  PROJECT: '根空间',
   AREA: '区域',
   BUILDING: '楼栋',
   FLOOR: '楼层',
@@ -25,7 +27,7 @@ const dialog = reactive({
   parentKey: '__root__',
   name: '',
   code: '',
-  type: 'PROJECT',
+  type: 'GENERIC',
   sort: 0,
   description: ''
 })
@@ -39,7 +41,7 @@ function openCreate(parent?: SpaceNode) {
   dialog.parentKey = parent?.id ?? '__root__'
   dialog.name = ''
   dialog.code = ''
-  dialog.type = parent ? 'AREA' : 'PROJECT'
+  dialog.type = parent ? 'AREA' : 'GENERIC'
   dialog.sort = 0
   dialog.description = ''
   dialog.visible = true
@@ -53,6 +55,7 @@ async function submit() {
   dialog.loading = true
   try {
     await api.createSpace({
+      projectId: projectStore.currentProjectId ?? undefined,
       parentId: dialog.parentKey === '__root__' ? undefined : dialog.parentKey,
       name: dialog.name.trim(),
       code: dialog.code.trim() || undefined,
@@ -99,10 +102,18 @@ onMounted(() => spaceStore.ensureLoaded())
   <div class="spaces">
     <div class="page-head">
       <div>
-        <h2 class="page-title">空间管理</h2>
-        <p class="page-sub">统一空间树：项目 / 区域 / 楼栋 / 楼层 / 房间；设备归属空间</p>
+        <h2 class="page-title">空间管理 · {{ projectStore.nameOf(projectStore.currentProjectId) }}</h2>
+        <p class="page-sub">当前项目下的区域 / 楼栋 / 楼层 / 房间空间树；设备归属空间</p>
       </div>
-      <el-button v-if="auth.canWrite" type="primary" :icon="Plus" @click="openCreate()">新建根空间</el-button>
+      <el-button
+        v-if="auth.canWrite"
+        type="primary"
+        :icon="Plus"
+        :disabled="!projectStore.currentProjectId"
+        @click="openCreate()"
+      >
+        新建根空间
+      </el-button>
     </div>
 
     <section class="card tree-card" v-loading="spaceStore.loading">
@@ -169,7 +180,6 @@ onMounted(() => spaceStore.ensureLoaded())
           <label class="field narrow">
             <span class="field-label">类型</span>
             <el-select v-model="dialog.type">
-              <el-option label="项目" value="PROJECT" />
               <el-option label="区域" value="AREA" />
               <el-option label="楼栋" value="BUILDING" />
               <el-option label="楼层" value="FLOOR" />

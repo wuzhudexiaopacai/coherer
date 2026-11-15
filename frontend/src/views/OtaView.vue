@@ -8,11 +8,13 @@ import type { Device, Firmware, OtaRollout, OtaRolloutDetail, OtaTask } from '..
 import StatusBadge from '../components/StatusBadge.vue'
 import { useAuthStore } from '../stores/auth'
 import { useProductStore } from '../stores/products'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime } from '../utils/format'
 
 const auth = useAuthStore()
 const productStore = useProductStore()
+const projectStore = useProjectStore()
 const spaceStore = useSpaceStore()
 
 const selectedProductId = ref<string | null>(null)
@@ -110,6 +112,7 @@ async function loadDevices() {
       current: 1,
       size: 200,
       productId: selectedProductId.value,
+      projectId: projectStore.currentProjectId ?? undefined,
       spaceId: spaceStore.currentSpaceId ?? undefined
     })
     devices.value = page.records
@@ -147,6 +150,7 @@ async function loadRollouts() {
   try {
     const page = await api.listOtaRollouts({
       productId: selectedProductId.value,
+      projectId: projectStore.currentProjectId ?? undefined,
       current: 1,
       size: 50
     })
@@ -191,6 +195,7 @@ async function submitRollout() {
   try {
     const detail = await api.createOtaRollout({
       firmwareId: rolloutDialog.firmware.id,
+      projectId: projectStore.currentProjectId ?? undefined,
       name: rolloutDialog.name.trim(),
       targetType: rolloutDialog.targetType,
       spaceId: rolloutDialog.targetType === 'SPACE'
@@ -457,7 +462,7 @@ watch(taskDeviceId, () => {
 })
 
 watch(
-  () => spaceStore.currentSpaceId,
+  () => [projectStore.currentProjectId, spaceStore.currentSpaceId],
   () => {
     void loadDevices()
     void loadRollouts()

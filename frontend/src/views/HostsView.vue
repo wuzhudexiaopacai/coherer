@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, watch } from 'vue'
 import { Delete, Link, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { api } from '../api'
 import type { Device, Host, HostRegisterResult } from '../api/types'
 import { useAuthStore } from '../stores/auth'
+import { useProjectStore } from '../stores/projects'
 import { useSpaceStore } from '../stores/spaces'
 import { fmtDateTime, fmtRelative } from '../utils/format'
 
 const auth = useAuthStore()
+const projectStore = useProjectStore()
 const spaceStore = useSpaceStore()
 
 const filters = reactive({ keyword: '' })
@@ -59,6 +61,7 @@ async function load() {
       current: state.current,
       size: state.size,
       keyword: filters.keyword || undefined,
+      projectId: projectStore.currentProjectId ?? undefined,
       spaceId: spaceStore.currentSpaceId ?? undefined
     })
     state.records = page.records
@@ -195,6 +198,7 @@ async function loadBindData() {
       api.listDevices({
         current: 1,
         size: 100,
+        projectId: projectStore.currentProjectId ?? undefined,
         spaceId: spaceStore.currentSpaceId ?? undefined
       })
     ])
@@ -244,6 +248,14 @@ onMounted(() => {
   void spaceStore.ensureLoaded()
   void load()
 })
+
+watch(
+  () => [projectStore.currentProjectId, spaceStore.currentSpaceId],
+  () => {
+    state.current = 1
+    void load()
+  }
+)
 </script>
 
 <template>

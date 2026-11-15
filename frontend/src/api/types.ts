@@ -19,9 +19,23 @@ export interface Product {
 
 export type DeviceStatus = 'INACTIVE' | 'ONLINE' | 'OFFLINE' | 'DISABLED'
 
+export interface Project {
+  id: string
+  code: string
+  name: string
+  status: 'ACTIVE' | 'DISABLED'
+  description?: string
+  spaceCount: number
+  hostCount: number
+  deviceCount: number
+  createdAt: string
+  updatedAt?: string
+}
+
 export interface Device {
   id: string
   productId: string
+  projectId?: string
   spaceId?: string
   hostId?: string | null
   deviceId: string
@@ -84,6 +98,7 @@ export interface DeviceQuery {
   current?: number
   size?: number
   productId?: string | null
+  projectId?: string | null
   spaceId?: string | null
   status?: string
   keyword?: string
@@ -159,11 +174,13 @@ export interface AlarmQuery {
   status?: string
   level?: string
   deviceId?: string
+  projectId?: string | null
   spaceId?: string | null
 }
 
 export interface SpaceNode {
   id: string
+  projectId?: string
   parentId?: string
   name: string
   code?: string
@@ -227,6 +244,7 @@ export interface Host {
   id: string
   hostId: string
   name: string
+  projectId?: string
   spaceId: string
   model?: string
   firmwareVersion?: string
@@ -295,6 +313,7 @@ export interface OtaRollout {
   firmwareId: string
   firmwareVersion?: string
   productId: string
+  projectId?: string
   name: string
   targetType: 'DEVICE' | 'SPACE' | 'ALL'
   targetSpaceId?: string
@@ -335,6 +354,7 @@ export interface OtaRolloutDetail extends OtaRollout {
 
 export interface OtaRolloutCreateBody {
   firmwareId: string
+  projectId?: string
   name: string
   targetType: 'DEVICE' | 'SPACE' | 'ALL'
   spaceId?: string

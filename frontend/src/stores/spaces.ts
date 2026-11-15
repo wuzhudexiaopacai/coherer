@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api } from '../api'
 import type { SpaceNode } from '../api/types'
+import { useProjectStore } from './projects'
 
 export interface FlatSpace extends SpaceNode {
   depth: number
@@ -10,6 +11,7 @@ export interface FlatSpace extends SpaceNode {
 const STORAGE_KEY = 'coherer.spaceId'
 
 export const useSpaceStore = defineStore('spaces', () => {
+  const projectStore = useProjectStore()
   const tree = ref<SpaceNode[]>([])
   const loading = ref(false)
   const currentSpaceId = ref<string | null>(localStorage.getItem(STORAGE_KEY))
@@ -33,7 +35,7 @@ export const useSpaceStore = defineStore('spaces', () => {
     if (loaded && !force) return
     loading.value = true
     try {
-      tree.value = await api.spaceTree()
+      tree.value = await api.spaceTree(projectStore.currentProjectId)
       loaded = true
       // 数据范围可能变化：当前选中空间已不可见时回退到「全部可见空间」
       if (currentSpaceId.value && !flat.value.some((item) => item.id === currentSpaceId.value)) {
@@ -58,5 +60,12 @@ export const useSpaceStore = defineStore('spaces', () => {
     return flat.value.find((item) => item.id === id)?.name ?? '—'
   }
 
-  return { tree, flat, loading, currentSpaceId, ensureLoaded, setCurrent, nameOf }
+  /** 切换项目时清空树与选中空间，等待 ensureLoaded(true) 重新拉取。 */
+  function reset() {
+    tree.value = []
+    setCurrent(null)
+    loaded = false
+  }
+
+  return { tree, flat, loading, currentSpaceId, ensureLoaded, setCurrent, nameOf, reset }
 })

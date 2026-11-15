@@ -5,6 +5,8 @@ const props = defineProps<{ status: string }>()
 
 const meta = computed(() => {
   switch (props.status) {
+    case 'ACTIVE':
+      return { label: '启用中', color: 'var(--success)' }
     case 'ONLINE':
       return { label: '在线', color: 'var(--success)' }
     case 'OFFLINE':
