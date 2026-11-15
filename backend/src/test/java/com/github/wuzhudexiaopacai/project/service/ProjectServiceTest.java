@@ -110,6 +110,12 @@ class ProjectServiceTest {
     }
 
     @Test
+    void delete_defaultProject_isRejected() {
+        BizException exception = assertThrows(BizException.class, () -> service.delete(1L));
+        assertEquals(409, exception.getCode());
+    }
+
+    @Test
     void delete_withSpaces_isRejected() {
         when(projectMapper.selectById(2L)).thenReturn(project(2L, "prj-b", "项目 B"));
         when(spaceService.spaceIdsOfProject(2L)).thenReturn(List.of(10L));

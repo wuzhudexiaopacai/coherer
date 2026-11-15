@@ -93,6 +93,9 @@ public class ProjectService extends ServiceImpl<ProjectMapper, Project> {
 
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
+        if (DEFAULT_PROJECT_ID == id) {
+            throw new BizException(409, "默认项目不能删除");
+        }
         require(id);
         List<Long> spaceIds = spaceService.spaceIdsOfProject(id);
         if (!spaceIds.isEmpty()) {
