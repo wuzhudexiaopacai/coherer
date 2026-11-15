@@ -78,6 +78,10 @@ python register_devices.py --count 5
 
 # 4. 启动设备模拟器（TLS + HMAC 签名认证）
 python simulator.py --credentials creds.json --tls
+#    验证 OTA 失败分支：追加 --ota-fail，设备会下载并校验固件后回报安装失败
+
+# 4.1 OTA：打开前端「固件升级」，选择产品上传固件并下发到同产品设备
+#     设备经 10 分钟有效的签名 URL 下载，校验 SHA256 后安装并回报进度
 
 # 5. 查看数据
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
@@ -141,7 +145,7 @@ cd deploy/certs && ./gen-certs.sh
 # 信任本地 CA 后访问 HTTPS/WSS（Chrome/Firefox 需导入 ca.crt，或用 curl）
 curl --ssl-no-revoke --cacert deploy/certs/ca.crt https://localhost:8443/api/ping
 
-# 备份：PostgreSQL + Redis + EMQX + TDengine，保留 7 天
+# 备份：PostgreSQL + Redis + EMQX + TDengine + OTA 固件，保留 7 天
 cd deploy && ./scripts/backup.sh
 # 恢复（会覆盖数据，必须显式确认）
 FORCE=1 ./scripts/restore.sh backups/<timestamp>
@@ -168,7 +172,7 @@ coherer/
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
 | M2 | 物模型、设备影子、在线状态（TTL 兜底）、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL、空间树、设备启停/删除/密钥轮换、用户管理、命令下发、事件上报、边缘主机/网关（命令转发 + 子设备数据代理） | ✅ 已完成 |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、时间水位 | 🟡 批量写入/幂等/共享订阅/命令下发/事件上报已完成，Kafka 与拆服务待做 |
-| M4 | OTA、场景联动、通知渠道、mTLS 加固、多租户 | 🟡 边缘主机/子设备拓扑已完成，其余待做 |
+| M4 | OTA、场景联动、通知渠道、mTLS 加固、多租户 | 🟡 **OTA 单设备升级已完成**（固件管理/签名下载/SHA256/进度/失败与超时）；批量灰度、场景联动、通知渠道、mTLS、多租户待做 |
 | M5 | K8s+Helm、HA、10 万连接压测报告 | 🟡 Prometheus/Grafana/Alertmanager/Zipkin 已完成，HA 与压测待做 |
 
 ## 文档
@@ -179,4 +183,4 @@ coherer/
 | [docs/design.md](docs/design.md) | 设计图：架构图、时序图、状态机、ER 图、Redis 键设计、接口设计、部署图 |
 | [docs/architecture.md](docs/architecture.md) | 技术方案：选型理由、MQTT 协议设计、里程碑、简历卖点与面试预演 |
 | [docs/enterprise-gap-analysis.md](docs/enterprise-gap-analysis.md) | 企业级差距分析：安全/可靠性/测试/运维评分、P0 阻断项、整改路线图与验收清单 |
-| [docs/pitfalls.md](docs/pitfalls.md) | 踩坑记录：构建、MyBatis-Plus、MQTT、TDengine、认证、可观测性与命令下发 |
+| [docs/pitfalls.md](docs/pitfalls.md) | 踩坑记录：构建、MyBatis-Plus、MQTT、TDengine、认证、可观测性、命令下发与 OTA |

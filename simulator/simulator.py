@@ -29,8 +29,10 @@ import json
 import os
 import random
 import signal
+import ssl
 import threading
 import time
+import urllib.request
 
 import paho.mqtt.client as mqtt
 
@@ -46,13 +48,19 @@ class VirtualDevice(threading.Thread):
     """一台虚拟设备：独立 MQTT 连接 + 遥测上报 + 影子同步 + 在线状态。"""
 
     def __init__(self, host, port, tenant, device_id, interval,
-                 tls=False, ca_file=None, insecure=False, device_secret=None):
+                 tls=False, ca_file=None, insecure=False, device_secret=None,
+                 ota_fail=False):
         super().__init__(daemon=True, name=f"dev-{device_id}")
         self.host = host
         self.port = port
         self.device_id = device_id
         self.tenant = tenant
         self.device_secret = device_secret
+        self.ca_file = ca_file or DEFAULT_CA_FILE
+        self.insecure = insecure
+        self.ota_fail = ota_fail
+        self.ota_in_progress = False
+        self.firmware_version = "1.0.0"
         self.event_seq = 0
         self.last_high_temp_event = 0.0
         self.interval = interval
@@ -62,6 +70,8 @@ class VirtualDevice(threading.Thread):
         self.status_topic = f"{tenant}/{device_id}/status"
         self.service_topic = f"{tenant}/{device_id}/thing/service/+"
         self.service_reply_topic = f"{tenant}/{device_id}/thing/service/reply"
+        self.ota_upgrade_topic = f"{tenant}/{device_id}/ota/upgrade"
+        self.ota_progress_topic = f"{tenant}/{device_id}/ota/progress"
         self.temperature = random.uniform(18, 30)
         self.humidity = random.uniform(40, 65)
         self.battery = random.uniform(70, 100)
@@ -214,10 +224,14 @@ class VirtualDevice(threading.Thread):
         client.publish(self.status_topic, "online", qos=1)
         client.subscribe(self.shadow_topic, qos=1)
         client.subscribe(self.service_topic, qos=1)
+        client.subscribe(self.ota_upgrade_topic, qos=1)
         # 上线即上报一次当前状态
         self._publish_shadow_report()
 
     def _on_message(self, client, userdata, message):
+        if message.topic == self.ota_upgrade_topic:
+            self._handle_ota_upgrade(message)
+            return
         if "/thing/service/" in message.topic and not message.topic.endswith("/reply"):
             self._handle_service_call(message)
             return
@@ -262,6 +276,92 @@ class VirtualDevice(threading.Thread):
         self.client.publish(self.service_reply_topic, json.dumps(reply), qos=1)
         print(f"[{self.device_id}] 命令 {identifier} -> code={code}")
 
+    def _handle_ota_upgrade(self, message):
+        """OTA 指令：异步下载固件，校验 SHA256 并模拟安装。"""
+        try:
+            data = json.loads(message.payload.decode())
+        except Exception as e:
+            print(f"[{self.device_id}] OTA 指令解析失败: {e}")
+            return
+        task_id = data.get("taskId")
+        if task_id is None:
+            print(f"[{self.device_id}] OTA 指令缺少 taskId，忽略")
+            return
+        if self.ota_in_progress:
+            self._report_ota(task_id, "FAILED", 0, "设备已有升级进行中")
+            return
+        self.ota_in_progress = True
+        print(f"[{self.device_id}] 收到 OTA taskId={task_id} version={data.get('version')}")
+        threading.Thread(target=self._perform_ota, args=(task_id, data),
+                         daemon=True).start()
+
+    def _perform_ota(self, task_id, data):
+        try:
+            url = data.get("url")
+            if not url:
+                self._report_ota(task_id, "FAILED", 0, "OTA 指令缺少下载地址")
+                return
+            self._report_ota(task_id, "DOWNLOADING", 5)
+            context = None
+            if url.startswith("https://"):
+                context = ssl.create_default_context(cafile=self.ca_file)
+                if self.insecure:
+                    context.check_hostname = False
+                    context.verify_mode = ssl.CERT_NONE
+            request = urllib.request.Request(url, headers={"User-Agent": "coherer-simulator"})
+            digest = hashlib.sha256()
+            downloaded = 0
+            last_progress = 5
+            with urllib.request.urlopen(request, timeout=30, context=context) as response:
+                total = int(response.headers.get("Content-Length")
+                            or data.get("size") or 0)
+                while not STOP.is_set():
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    downloaded += len(chunk)
+                    if total > 0:
+                        progress = min(95, int(downloaded * 95 / total))
+                        if progress - last_progress >= 5:
+                            last_progress = progress
+                            self._report_ota(task_id, "DOWNLOADING", progress)
+            if downloaded == 0:
+                self._report_ota(task_id, "FAILED", 0, "固件下载为空")
+                return
+            expected = (data.get("sha256") or "").lower()
+            actual = digest.hexdigest()
+            if expected and expected != actual:
+                self._report_ota(task_id, "FAILED", 0,
+                                 f"SHA256 校验失败 expected={expected} actual={actual}")
+                return
+            self._report_ota(task_id, "DOWNLOADING", 95)
+            # 模拟写入 flash / 重启生效
+            STOP.wait(1.0)
+            if self.ota_fail:
+                self._report_ota(task_id, "FAILED", 95, "模拟安装失败（--ota-fail）")
+                return
+            self.firmware_version = data.get("version") or self.firmware_version
+            self._report_ota(task_id, "SUCCESS", 100)
+            print(f"[{self.device_id}] OTA 升级成功 version={self.firmware_version}")
+        except Exception as e:
+            self._report_ota(task_id, "FAILED", 0, f"升级异常: {e}")
+            print(f"[{self.device_id}] OTA 失败: {e}")
+        finally:
+            self.ota_in_progress = False
+
+    def _report_ota(self, task_id, status, progress, error=None):
+        payload = {"taskId": task_id, "status": status,
+                   "progress": progress, "ts": int(time.time() * 1000)}
+        if error:
+            payload["error"] = error
+        try:
+            self.client.publish(self.ota_progress_topic, json.dumps(payload), qos=1)
+            print(f"[{self.device_id}] OTA 进度 {status} {progress}%"
+                  + (f" error={error}" if error else ""))
+        except Exception as e:
+            print(f"[{self.device_id}] OTA 进度上报失败: {e}")
+
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
         if not STOP.is_set():
             print(f"[{self.device_id}] 意外断开: {reason_code} (paho 会自动重连)")
@@ -283,6 +383,8 @@ def main() -> None:
                         help="CA 证书路径 (默认 deploy/certs/ca.crt)")
     parser.add_argument("--insecure", action="store_true",
                         help="跳过服务端证书校验（仅排障）")
+    parser.add_argument("--ota-fail", action="store_true",
+                        help="模拟 OTA 安装失败（验证失败上报与任务状态）")
     args = parser.parse_args()
 
     port = args.port or (8883 if args.tls else 1883)
@@ -299,14 +401,15 @@ def main() -> None:
         devices = [
             VirtualDevice(args.host, port, args.tenant, item["deviceId"], args.interval,
                           tls=args.tls, ca_file=ca_file, insecure=args.insecure,
-                          device_secret=item["secret"])
+                          device_secret=item["secret"], ota_fail=args.ota_fail)
             for item in credentials
         ]
         mode = "认证设备"
     else:
         devices = [
             VirtualDevice(args.host, port, args.tenant, f"{args.prefix}-{i:04d}", args.interval,
-                          tls=args.tls, ca_file=ca_file, insecure=args.insecure)
+                          tls=args.tls, ca_file=ca_file, insecure=args.insecure,
+                          ota_fail=args.ota_fail)
             for i in range(1, args.count + 1)
         ]
         mode = "匿名设备"

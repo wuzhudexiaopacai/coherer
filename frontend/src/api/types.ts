@@ -240,3 +240,31 @@ export interface HostRegisterResult {
   name: string
   hostSecret: string
 }
+
+export interface Firmware {
+  id: string
+  productId: string
+  version: string
+  fileName: string
+  /** 后端 Long 统一序列化为字符串 */
+  sizeBytes: number | string
+  sha256: string
+  createdBy?: string
+  createdAt: string
+}
+
+export type OtaStatus = 'PENDING' | 'SENT' | 'DOWNLOADING' | 'SUCCESS' | 'FAILED' | 'TIMEOUT'
+
+export interface OtaTask {
+  id: string
+  firmwareId: string
+  firmwareVersion?: string
+  deviceId: string
+  status: OtaStatus
+  progress: number
+  error?: string
+  createdBy?: string
+  createdAt: string
+  sentAt?: string
+  finishedAt?: string
+}

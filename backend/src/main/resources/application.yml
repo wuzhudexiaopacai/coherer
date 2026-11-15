@@ -1,6 +1,11 @@
 spring:
   application:
     name: coherer-backend
+  servlet:
+    multipart:
+      # 固件包上传上限；超出由容器直接拒绝，避免大文件占满内存
+      max-file-size: 64MB
+      max-request-size: 66MB
   config:
     # 本地开发：从 backend/.env 读取敏感配置（生产由环境变量/密钥管理注入）
     import: optional:file:.env[.properties]
@@ -129,3 +134,15 @@ coherer:
     url: ${COHERER_TDENGINE_URL:jdbc:TAOS-WS://localhost:6041}
     username: root
     password: ${COHERER_TDENGINE_PASSWORD}
+  ota:
+    # 固件下载 URL 的对外基地址（设备可达的 Nginx HTTPS 地址）
+    public-base-url: ${COHERER_OTA_PUBLIC_BASE_URL:https://localhost:8443}
+    # 下载签名有效期；设备需在有效期内完成下载
+    download-ttl-seconds: ${COHERER_OTA_DOWNLOAD_TTL_SECONDS:600}
+    # 下载链接 HMAC 密钥（至少 16 字符），与 JWT/AES 密钥独立
+    secret: ${COHERER_OTA_SECRET}
+    # 固件本地存储目录；生产可替换为对象存储
+    firmware-dir: ${COHERER_OTA_FIRMWARE_DIR:../deploy/firmware}
+    # 任务超时与巡检间隔：超过该时长无进度即置为 TIMEOUT
+    task-timeout-seconds: ${COHERER_OTA_TASK_TIMEOUT_SECONDS:600}
+    timeout-sweep-interval-ms: ${COHERER_OTA_TIMEOUT_SWEEP_INTERVAL_MS:30000}

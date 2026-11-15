@@ -8,6 +8,7 @@ const DevicesView = () => import('../views/DevicesView.vue')
 const DeviceDetailView = () => import('../views/DeviceDetailView.vue')
 const ProductsView = () => import('../views/ProductsView.vue')
 const HostsView = () => import('../views/HostsView.vue')
+const OtaView = () => import('../views/OtaView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
 const UsersView = () => import('../views/UsersView.vue')
@@ -55,6 +56,12 @@ const router = createRouter({
           name: 'products',
           component: ProductsView,
           meta: { title: '产品与物模型', subtitle: '产品定义 · 属性 / 事件 / 服务' }
+        },
+        {
+          path: 'ota',
+          name: 'ota',
+          component: OtaView,
+          meta: { title: '固件升级', subtitle: '固件版本 · 签名下载 · OTA 任务进度' }
         },
         {
           path: 'alarms',

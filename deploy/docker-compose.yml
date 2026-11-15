@@ -183,8 +183,11 @@ services:
       # 浏览器与页面同源，经 Nginx 的 /mqtt 反代到 EMQX
       COHERER_MQTT_WS_URL: wss://localhost:8443/mqtt
       COHERER_ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      # 固件落在命名卷，避免宿主机目录权限问题
+      COHERER_OTA_FIRMWARE_DIR: /app/firmware
     volumes:
       - ./certs:/certs:ro
+      - firmware-data:/app/firmware
     depends_on:
       postgres:
         condition: service_healthy
@@ -296,3 +299,4 @@ volumes:
   alertmanager-data:
   grafana-data:
   prometheus-data:
+  firmware-data:

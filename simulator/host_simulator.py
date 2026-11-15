@@ -49,20 +49,49 @@ def main() -> None:
 
     status_topic = f"{tenant}/{host_id}/host/status"
     command_filter = f"{tenant}/{host_id}/sub/+/thing/service/+"
+    ota_filter = f"{tenant}/{host_id}/sub/+/ota/upgrade"
     client.will_set(status_topic, "offline", qos=1, retain=False)
 
     def on_connect(c, userdata, flags, reason_code, properties=None):
         if reason_code.is_failure:
             print(f"[{host_id}] 连接失败: {reason_code}")
             return
-        print(f"[{host_id}] 已连接，订阅 {command_filter}")
+        print(f"[{host_id}] 已连接，订阅 {command_filter} 与 OTA 指令")
         c.publish(status_topic, "online", qos=1)
         c.subscribe(command_filter, qos=1)
+        c.subscribe(ota_filter, qos=1)
         for child in args.child_device:
             c.publish(f"{tenant}/{host_id}/sub/{child}/status", "online", qos=1)
 
+    def forward_ota(c, levels, payload):
+        """模拟网关把 OTA 指令转发给子设备，并代传进度。"""
+        device_id = levels[3]
+        task_id = payload.get("taskId")
+        if task_id is None:
+            print(f"[{host_id}] OTA 指令缺少 taskId")
+            return
+        print(f"[{host_id}] 转发 OTA -> {device_id} taskId={task_id}"
+              f" version={payload.get('version')}")
+        progress_topic = f"{tenant}/{host_id}/sub/{device_id}/ota/progress"
+        for progress in (20, 60, 100):
+            c.publish(progress_topic, json.dumps({
+                "taskId": task_id,
+                "status": "SUCCESS" if progress == 100 else "DOWNLOADING",
+                "progress": progress,
+                "ts": int(time.time() * 1000),
+            }), qos=1)
+            time.sleep(0.5)
+        print(f"[{host_id}] 子设备 {device_id} OTA 完成")
+
     def on_message(c, userdata, message):
         levels = message.topic.split("/")
+        if len(levels) == 6 and levels[2] == "sub" and levels[4] == "ota" \
+                and levels[5] == "upgrade":
+            try:
+                forward_ota(c, levels, json.loads(message.payload.decode()))
+            except Exception as error:
+                print(f"[{host_id}] OTA 指令处理失败: {error}")
+            return
         if len(levels) != 7 or levels[2] != "sub":
             return
         device_id = levels[3]

@@ -32,7 +32,7 @@ describe('auth store', () => {
     expect(useAuthStore().roleLabel).toBe('运维')
   })
 
-  it('logout clears tokens and user', () => {
+  it('logout clears tokens and user', async () => {
     localStorage.setItem('coherer.accessToken', 'a')
     localStorage.setItem('coherer.refreshToken', 'r')
     localStorage.setItem(
@@ -41,7 +41,7 @@ describe('auth store', () => {
     )
     const store = useAuthStore()
 
-    store.logout()
+    await store.logout()
 
     expect(store.user).toBeNull()
     expect(localStorage.getItem('coherer.accessToken')).toBeNull()

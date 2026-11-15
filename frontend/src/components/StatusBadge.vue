@@ -13,6 +13,18 @@ const meta = computed(() => {
       return { label: '未激活', color: 'var(--warning)' }
     case 'DISABLED':
       return { label: '已禁用', color: 'var(--danger)' }
+    case 'PENDING':
+      return { label: '等待下发', color: 'var(--warning)' }
+    case 'SENT':
+      return { label: '已下发', color: 'var(--accent)' }
+    case 'DOWNLOADING':
+      return { label: '下载中', color: 'var(--accent)' }
+    case 'SUCCESS':
+      return { label: '成功', color: 'var(--success)' }
+    case 'FAILED':
+      return { label: '失败', color: 'var(--danger)' }
+    case 'TIMEOUT':
+      return { label: '超时', color: 'var(--warning)' }
     default:
       return { label: props.status || '未知', color: 'var(--text-3)' }
   }

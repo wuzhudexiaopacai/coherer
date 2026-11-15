@@ -7,6 +7,8 @@ import com.github.wuzhudexiaopacai.device.status.DeviceStatusService;
 import com.github.wuzhudexiaopacai.event.service.EventService;
 import com.github.wuzhudexiaopacai.host.service.HostDeviceAccessService;
 import com.github.wuzhudexiaopacai.host.service.HostStatusService;
+import com.github.wuzhudexiaopacai.ota.service.OtaProgressService;
+import com.github.wuzhudexiaopacai.ota.service.OtaPublisher;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -42,7 +44,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @RequiredArgsConstructor
-public class MqttGateway implements CommandPublisher {
+public class MqttGateway implements CommandPublisher, OtaPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(MqttGateway.class);
 
@@ -62,6 +64,9 @@ public class MqttGateway implements CommandPublisher {
             "$share/coherer/+/+/sub/+/shadow/report";
     private static final String HOST_DEVICE_STATUS_TOPIC =
             "$share/coherer/+/+/sub/+/status";
+    private static final String OTA_PROGRESS_TOPIC = "$share/coherer/+/+/ota/progress";
+    private static final String HOST_OTA_PROGRESS_TOPIC =
+            "$share/coherer/+/+/sub/+/ota/progress";
 
     private final TelemetryService telemetryService;
     private final ShadowService shadowService;
@@ -70,6 +75,7 @@ public class MqttGateway implements CommandPublisher {
     private final EventService eventService;
     private final HostStatusService hostStatusService;
     private final HostDeviceAccessService hostDeviceAccessService;
+    private final OtaProgressService otaProgressService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -207,9 +213,11 @@ public class MqttGateway implements CommandPublisher {
                     new String[]{TELEMETRY_TOPIC, SHADOW_REPORT_TOPIC, STATUS_TOPIC,
                             COMMAND_REPLY_TOPIC, EVENT_TOPIC, HOST_STATUS_TOPIC,
                             HOST_COMMAND_REPLY_TOPIC, HOST_TELEMETRY_TOPIC,
-                            HOST_EVENT_TOPIC, HOST_SHADOW_TOPIC, HOST_DEVICE_STATUS_TOPIC},
-                    new int[]{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
-            log.info("已共享订阅：直连遥测/影子/状态/回执/事件 + 主机状态/回执/子设备遥测/事件/影子/状态");
+                            HOST_EVENT_TOPIC, HOST_SHADOW_TOPIC, HOST_DEVICE_STATUS_TOPIC,
+                            OTA_PROGRESS_TOPIC, HOST_OTA_PROGRESS_TOPIC},
+                    new int[]{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+            log.info("已共享订阅：直连遥测/影子/状态/回执/事件/OTA进度"
+                    + " + 主机状态/回执/子设备遥测/事件/影子/状态/OTA进度");
         } catch (MqttException e) {
             log.error("共享订阅失败: {}", e.getMessage());
         }
@@ -245,6 +253,42 @@ public class MqttGateway implements CommandPublisher {
         } catch (Exception e) {
             log.warn("命令下发失败 deviceId={} identifier={} err={}",
                     deviceId, identifier, e.getMessage());
+            return false;
+        }
+    }
+
+    /** 下发 OTA 升级指令；设备可能直连，也可能挂在边缘主机下。 */
+    @Override
+    public boolean publishOta(String tenantId, String deviceId, String hostKey,
+                              Long taskId, Long firmwareId, String version,
+                              String downloadUrl, String sha256, long sizeBytes) {
+        if (client == null || !client.isConnected()) {
+            log.warn("MQTT 未连接，OTA 指令未下发 deviceId={} taskId={}", deviceId, taskId);
+            return false;
+        }
+        try {
+            String topic = hostKey == null
+                    ? tenantId + "/" + deviceId + "/ota/upgrade"
+                    : tenantId + "/" + hostKey + "/sub/" + deviceId + "/ota/upgrade";
+            byte[] payload = objectMapper.writeValueAsBytes(java.util.Map.of(
+                    "taskId", taskId,
+                    "firmwareId", firmwareId,
+                    "deviceId", deviceId,
+                    "version", version,
+                    "url", downloadUrl,
+                    "sha256", sha256,
+                    "size", sizeBytes,
+                    "ts", System.currentTimeMillis()));
+            MqttMessage message = new MqttMessage(payload);
+            message.setQos(1);
+            client.publish(topic, message);
+            meterRegistry.counter("coherer.ota.sent").increment();
+            log.info("OTA 指令已下发 deviceId={} taskId={} version={} viaHost={}",
+                    deviceId, taskId, version, hostKey != null);
+            return true;
+        } catch (Exception e) {
+            log.warn("OTA 指令下发失败 deviceId={} taskId={} err={}",
+                    deviceId, taskId, e.getMessage());
             return false;
         }
     }
@@ -317,6 +361,14 @@ public class MqttGateway implements CommandPublisher {
                 && "status".equals(levels[4])) {
             return "host-device-status";
         }
+        if (levels.length == 4 && "ota".equals(levels[2])
+                && "progress".equals(levels[3])) {
+            return "ota-progress";
+        }
+        if (levels.length == 6 && "sub".equals(levels[2])
+                && "ota".equals(levels[4]) && "progress".equals(levels[5])) {
+            return "host-ota-progress";
+        }
         return null;
     }
 
@@ -344,6 +396,10 @@ public class MqttGateway implements CommandPublisher {
                 case "host-event" -> {
                     String[] levels = topic.split("/");
                     eventService.ingest(tenantId, deviceId, levels[6], payload);
+                    deviceStatusService.heartbeat(deviceId);
+                }
+                case "host-ota-progress" -> {
+                    otaProgressService.onProgress(deviceId, payload);
                     deviceStatusService.heartbeat(deviceId);
                 }
                 default -> {
@@ -374,6 +430,7 @@ public class MqttGateway implements CommandPublisher {
                     eventService.ingest(tenantId, deviceId, levels[4], payload);
                     deviceStatusService.heartbeat(deviceId);
                 }
+                case "ota-progress" -> otaProgressService.onProgress(deviceId, payload);
                 case "host-status" -> hostStatusService.onStatus(tenantId, deviceId,
                         new String(payload, StandardCharsets.UTF_8));
                 case "host-command-reply" -> {

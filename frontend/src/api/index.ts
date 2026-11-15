@@ -22,8 +22,10 @@ import type {
   CommandRecord,
   AuditLogItem,
   DeviceEvent,
+  Firmware,
   Host,
-  HostRegisterResult
+  HostRegisterResult,
+  OtaTask
 } from './types'
 
 export const api = {
@@ -243,5 +245,41 @@ export const api = {
     request<void>({ url: `/alarms/${id}/ack`, method: 'post' }),
 
   closeAlarm: (id: string) =>
-    request<void>({ url: `/alarms/${id}/close`, method: 'post' })
+    request<void>({ url: `/alarms/${id}/close`, method: 'post' }),
+
+  listFirmwares: (productId: string) =>
+    request<Firmware[]>({
+      url: '/ota/firmwares',
+      method: 'get',
+      params: { productId }
+    }),
+
+  uploadFirmware: (productId: string, version: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<Firmware>({
+      url: '/ota/firmwares',
+      method: 'post',
+      params: { productId, version },
+      data: form,
+      timeout: 120000
+    })
+  },
+
+  deleteFirmware: (id: string) =>
+    request<void>({ url: `/ota/firmwares/${id}`, method: 'delete' }),
+
+  startOta: (deviceId: string, firmwareId: string) =>
+    request<OtaTask>({
+      url: '/ota/tasks',
+      method: 'post',
+      data: { deviceId, firmwareId }
+    }),
+
+  listOtaTasks: (deviceId: string, limit = 20) =>
+    request<OtaTask[]>({
+      url: '/ota/tasks',
+      method: 'get',
+      params: { deviceId, limit }
+    })
 }

@@ -258,20 +258,25 @@ sequenceDiagram
     participant EMQX as EMQX
     participant D as 设备
 
-    A->>OS: 上传固件（SHA-256 校验）
-    OS->>DB: 保存 firmware 元数据
-    A->>OS: 创建 OTA 任务（目标 / 灰度批次）
-    OS->>DB: ota_task + ota_record (PENDING)
-    OS->>EMQX: 下发升级指令（版本 + 下载 URL + 校验和）
-    EMQX->>D: thing/service/ota_upgrade
+    A->>OS: 上传固件（服务端计算 SHA-256）
+    OS->>DB: 保存 firmware 元数据（产品+版本唯一）
+    A->>OS: 对单台设备创建 OTA 任务
+    OS->>DB: ota_task (PENDING，同一设备仅一个进行中任务)
+    OS->>OS: 生成 10 分钟 HMAC 签名下载 URL
+    OS->>EMQX: 下发版本 + URL + SHA256 + size
+    EMQX->>D: {tenant}/{deviceId}/ota/upgrade
+    Note over OS,DB: 任务先提交再发 MQTT，避免设备进度早于任务可见
 
-    D->>D: 下载 → 校验 → 安装 → 重启
-    D->>EMQX: 上报进度 thing/ota/progress
-    EMQX->>OS: 订阅进度主题
-    OS->>DB: 更新 progress / status
-
-    Note over OS,DB: 本批次成功或超时 → 下一批，否则暂停/结束
+    D->>OS: HTTPS GET /api/ota/download/{id}?deviceId&expires&signature
+    OS-->>D: 固件二进制（校验签名、设备与产品匹配、设备未禁用）
+    D->>D: 下载 → SHA256 校验 → 安装 → 重启
+    D->>EMQX: 上报进度 {tenant}/{deviceId}/ota/progress
+    EMQX->>OS: 共享订阅 + 主机路径 {tenant}/{host}/sub/{device}/ota/progress
+    OS->>DB: 更新 progress / status / finished_at
 ```
+
+> 当前实现为单设备任务；分组/全量/灰度分批、暂停与回滚作为后续迭代。主机下的设备由平台把
+> 指令发到 `{tenant}/{hostId}/sub/{deviceId}/ota/upgrade`，主机负责转发并代传进度。
 
 ## 4. 状态机
 
@@ -321,24 +326,27 @@ stateDiagram-v2
 
 ```mermaid
 stateDiagram-v2
-    state "待执行" as Created
-    state "执行中" as Running
-    state "部分成功" as Partial
+    state "待下发" as Pending
+    state "已下发" as Sent
+    state "下载中" as Downloading
     state "成功" as Success
     state "失败" as Failed
-    state "已取消" as Canceled
+    state "超时" as Timeout
 
-    [*] --> Created
-    Created --> Running: 启动
-    Running --> Success: 全部设备成功
-    Running --> Partial: 部分设备失败
-    Running --> Failed: 全部失败
-    Running --> Canceled: 取消
-    Created --> Canceled: 取消
-    Partial --> [*]
+    [*] --> Pending: 创建任务
+    Pending --> Sent: MQTT 下发成功
+    Pending --> Failed: 主机不可用 / MQTT 未连接
+    Pending --> Timeout: 超时仍未下发
+    Sent --> Downloading: 设备开始下载
+    Sent --> Success: 设备安装成功
+    Sent --> Failed: 设备回报失败
+    Downloading --> Success: progress=100 / SUCCESS
+    Downloading --> Failed: SHA256 不符 / 安装失败
+    Sent --> Timeout: 超时无进度
+    Downloading --> Timeout: 进度长时间未更新
     Success --> [*]
     Failed --> [*]
-    Canceled --> [*]
+    Timeout --> [*]
 ```
 
 ### 4.4 告警状态
@@ -379,8 +387,7 @@ erDiagram
     DEVICE ||--o{ ALARM_RECORD : "关联"
     ALARM_RULE ||--o{ ALARM_RECORD : "产生"
     FIRMWARE ||--o{ OTA_TASK : "关联"
-    OTA_TASK ||--o{ OTA_RECORD : "包含"
-    DEVICE ||--o{ OTA_RECORD : "执行"
+    DEVICE ||--o{ OTA_TASK : "执行"
 
     TENANT {
         bigint id PK
@@ -496,9 +503,10 @@ erDiagram
         bigint id PK
         bigint tenant_id FK
         bigint product_id FK
-        varchar version "固件版本"
-        varchar file_url "文件地址"
-        varchar sha256 "校验和"
+        varchar version "版本（产品内唯一）"
+        varchar file_name "原始文件名"
+        varchar storage_path "本地/对象存储路径"
+        varchar sha256 "SHA-256"
         bigint size_bytes "大小"
         timestamp created_at
     }
@@ -506,21 +514,13 @@ erDiagram
         bigint id PK
         bigint tenant_id FK
         bigint firmware_id FK
-        varchar name "任务名"
-        varchar target_type "DEVICE/GROUP/ALL"
-        jsonb target "目标范围"
-        jsonb strategy "灰度策略"
-        varchar status "任务状态"
-    }
-    OTA_RECORD {
-        bigint id PK
-        bigint task_id FK
-        bigint device_id FK
-        varchar from_version "升级前版本"
-        varchar status "状态"
+        varchar device_id "目标设备"
+        varchar status "PENDING/SENT/DOWNLOADING/SUCCESS/FAILED/TIMEOUT"
         int progress "进度 0-100"
-        varchar error_msg "失败原因"
-        timestamp updated_at
+        varchar error "失败原因"
+        timestamp sent_at
+        timestamp updated_at "超时巡检基准"
+        timestamp finished_at
     }
     AUDIT_LOG {
         bigint id PK
@@ -599,9 +599,10 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 看板 | `GET /api/dashboard/overview` · `/telemetry-trend` · `/recent-telemetry` | 总览 KPI、小时趋势、全平台最近遥测 |
 | 告警 | `POST /api/alarms/{id}/ack` `.../close` | 确认 / 关闭 |
 | 规则 | `GET/POST /api/alarm-rules` | 告警规则管理 |
-| OTA | `POST /api/firmwares` | 上传固件 |
-| OTA | `POST /api/ota/tasks` | 创建升级任务 |
-| OTA | `GET /api/ota/tasks/{id}` | 任务详情与进度 |
+| OTA | `GET/POST /api/ota/firmwares` · `DELETE /api/ota/firmwares/{id}` | 按产品列出 / 上传（multipart）/ 删除固件 |
+| OTA | `GET /api/ota/download/{firmwareId}` | 设备侧签名下载（无需 JWT，10 分钟有效） |
+| OTA | `POST /api/ota/tasks` | 对单设备创建升级任务并立即下发 |
+| OTA | `GET /api/ota/tasks?deviceId=&limit=` | 设备最近升级任务与进度 |
 
 ### 6.2 内部接口（EMQX 回调）
 

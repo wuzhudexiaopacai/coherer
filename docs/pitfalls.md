@@ -319,7 +319,54 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 **现象**：`sha256sum ./*` 对 `tdengine/` 目录报错，导致脚本中断。  
 **修复**：`find . -maxdepth 1 -type f -exec sha256sum {} + | sort > SHA256SUMS`。
 
-## 11. 提交索引
+## 11. OTA 固件升级
+
+### 11.1 Nginx 默认 1MB 请求体拦截固件上传
+
+**现象**：3MB 固件上传返回 Nginx HTML 错误页，后端无日志；`curl` 报 HTTP 413/000。
+**原因**：Nginx `client_max_body_size` 默认 `1m`，请求还没到 Spring Boot 就被拒绝。
+**修复**：`frontend/nginx.conf` 的 HTTPS server 增加 `client_max_body_size 66m`，并把
+`proxy_read_timeout/proxy_send_timeout` 提到 120s，与后端 `spring.servlet.multipart` 上限匹配。
+**验证**：3MB 固件经 8443 上传返回 200，`firmware.sha256` 与 `sha256sum` 一致。
+
+### 11.2 MQTT 副作用不能包在数据库事务里
+
+**现象**：设备收到 OTA 指令后立刻回报 5%，平台却查不到任务；极端情况下 MQTT 已下发，接口事务回滚，
+平台没有任务而设备已经开始升级。
+**原因**：`ota_task` 插入未提交，设备进度先到；或发布 MQTT 成功后后续 DB 操作失败触发回滚。
+**修复**：任务行先提交，再生成签名 URL 并发布 MQTT；下发/主机校验失败把任务置 `FAILED`。
+`PENDING` 也纳入超时巡检，防止任务永久卡住。
+**验证**：下载进度从 5% 开始完整落库；停止 EMQX 后任务稳定置 `FAILED`。
+
+### 11.3 设备下载不能用用户 JWT
+
+**现象**：设备端没有用户登录态，带 Bearer Token 下载不现实。
+**修复**：平台生成 HMAC 签名 URL（`firmwareId|deviceId|expiresAt`），10 分钟有效；
+下载时校验签名、过期时间、设备与固件产品匹配、设备未禁用，签名比较用 `MessageDigest.isEqual`。
+**验证**：错误签名返回 403；过期 URL 返回 403；正确 URL 经 HTTPS 下载成功。
+
+### 11.4 固件存储目录权限
+
+**现象**：容器内上传固件报 `Permission denied`。
+**原因**：宿主机 bind mount 目录属主是 root，而镜像以 `coherer`（uid 10001）运行。
+**修复**：改用命名卷 `firmware-data:/app/firmware`，并在 Dockerfile 创建目录后 `chown coherer`。
+**验证**：`docker exec coherer-backend ls -ld /app/firmware` 属主为 `coherer`，上传成功。
+
+### 11.5 Long 序列化为字符串导致前端类型不符
+
+**现象**：`sizeBytes` 实际返回 `"3145728"`，前端声明为 `number`。
+**原因**：项目为保住雪花 ID 精度，把所有 `Long` 统一序列化为字符串，`sizeBytes` 也受影响。
+**修复**：前端类型改 `number | string`，展示前 `Number(value)`；不要对 ID 做数值运算。
+**验证**：上传 3MB 固件前端显示 `3.00 MB`。
+
+### 11.6 MyBatis-Plus 3.5.18 的 `updateById` 重载歧义
+
+**现象**：测试里 `verify(mapper, never()).updateById(any())` 编译报「引用不明确」。
+**原因**：`BaseMapper` 同时有 `updateById(T)` 与 `updateById(Collection<T>)`。
+**修复**：显式 `any(OtaTask.class)`。
+**验证**：`OtaProgressServiceTest` 编译并通过。
+
+## 12. 提交索引
 
 | 提交 | 内容 |
 |---|---|
@@ -347,11 +394,12 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 | `f1f42a7` | TDengine space_id tag/保留期 |
 | `042c79d` | 设备事件上报 |
 
-## 10. 仍建议优先处理
+## 13. 仍建议优先处理
 
-1. 写入前校验遥测 payload 长度，避免 TDengine 截断
-2. 命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流
+1. ~~写入前校验遥测 payload 长度，避免 TDengine 截断~~（已完成）
+2. ~~命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流~~（已完成）
 3. 调度线程池显式配置，遥测 flush 与巡检隔离
 4. ~~后端/前端镜像与 Nginx 同源部署~~（已完成并验证）
 5. ~~CI 镜像构建与推送~~（已加入 GHCR job，需推送到 GitHub 后验证）
-5. Testcontainers 集成测试与 E2E
+6. Testcontainers 集成测试与 E2E
+7. OTA 批量灰度、失败重试与版本回退

@@ -50,6 +50,8 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // 固件下载用设备级短期签名鉴权，不能要求用户 JWT
+                        .requestMatchers("/api/ota/download/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/refresh",
                                 "/api/ping", "/actuator/health", "/actuator/health/**",
                                 "/actuator/prometheus", "/internal/**").permitAll()
