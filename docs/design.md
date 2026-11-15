@@ -275,8 +275,9 @@ sequenceDiagram
     OS->>DB: 更新 progress / status / finished_at
 ```
 
-> 当前实现为单设备任务；分组/全量/灰度分批、暂停与回滚作为后续迭代。主机下的设备由平台把
-> 指令发到 `{tenant}/{hostId}/sub/{deviceId}/ota/upgrade`，主机负责转发并代传进度。
+> 下载支持 HTTP Range：设备按 256KB 分片请求，服务端返回 206 + `Content-Range`；本地文件用
+> FileChannel offset 读取，S3 用 GetObject offset/length，网络中断后从当前 offset 续传。
+> 主机下的设备由平台把指令发到 `{tenant}/{hostId}/sub/{deviceId}/ota/upgrade`，主机负责转发并代传进度。
 
 ## 4. 状态机
 
@@ -669,7 +670,7 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | 告警 | `POST /api/alarms/{id}/ack` `.../close` | 确认 / 关闭 |
 | 规则 | `GET/POST /api/alarm-rules` | 告警规则管理 |
 | OTA | `GET/POST /api/ota/firmwares` · `DELETE /api/ota/firmwares/{id}` | 按产品列出 / 上传（multipart）/ 删除固件 |
-| OTA | `GET /api/ota/download/{firmwareId}` | 设备侧签名下载（无需 JWT，10 分钟有效） |
+| OTA | `GET /api/ota/download/{firmwareId}` | 设备侧签名下载（无需 JWT，10 分钟有效；支持 `Range` 206） |
 | OTA | `POST /api/ota/tasks` | 对单设备创建升级任务并立即下发 |
 | OTA | `GET /api/ota/tasks?deviceId=&limit=` | 设备最近升级任务与进度 |
 | OTA | `POST /api/ota/tasks/{id}/rollback` | 按任务的 from_version 生成 ROLLBACK 任务 |

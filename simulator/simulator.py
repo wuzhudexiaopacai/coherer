@@ -38,6 +38,10 @@ import paho.mqtt.client as mqtt
 
 STOP = threading.Event()
 
+# OTA 断点续传：每次 Range 请求 256KB，网络异常时从当前 offset 重试
+OTA_CHUNK_SIZE = 256 * 1024
+OTA_RESUME_RETRIES = 3
+
 # 默认 CA 路径：仓库根目录下 deploy/certs/ca.crt
 DEFAULT_CA_FILE = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "deploy", "certs", "ca.crt")
@@ -49,7 +53,7 @@ class VirtualDevice(threading.Thread):
 
     def __init__(self, host, port, tenant, device_id, interval,
                  tls=False, ca_file=None, insecure=False, device_secret=None,
-                 ota_fail=False):
+                 ota_fail=False, ota_drop_once=False):
         super().__init__(daemon=True, name=f"dev-{device_id}")
         self.host = host
         self.port = port
@@ -59,6 +63,8 @@ class VirtualDevice(threading.Thread):
         self.ca_file = ca_file or DEFAULT_CA_FILE
         self.insecure = insecure
         self.ota_fail = ota_fail
+        self.ota_drop_once = ota_drop_once
+        self.ota_dropped = False
         self.ota_in_progress = False
         self.ota_attempt = 1
         self.firmware_version = "1.0.0"
@@ -294,6 +300,7 @@ class VirtualDevice(threading.Thread):
             return
         self.ota_in_progress = True
         self.ota_attempt = int(data.get("attempt") or 1)
+        self.ota_dropped = False
         print(f"[{self.device_id}] 收到 OTA taskId={task_id}"
               f" version={data.get('version')} attempt={self.ota_attempt}")
         threading.Thread(target=self._perform_ota, args=(task_id, data),
@@ -312,26 +319,55 @@ class VirtualDevice(threading.Thread):
                 if self.insecure:
                     context.check_hostname = False
                     context.verify_mode = ssl.CERT_NONE
-            request = urllib.request.Request(url, headers={"User-Agent": "coherer-simulator"})
             digest = hashlib.sha256()
             downloaded = 0
             last_progress = 5
-            with urllib.request.urlopen(request, timeout=30, context=context) as response:
-                total = int(response.headers.get("Content-Length")
-                            or data.get("size") or 0)
-                while not STOP.is_set():
-                    chunk = response.read(65536)
-                    if not chunk:
-                        break
-                    digest.update(chunk)
-                    downloaded += len(chunk)
-                    if total > 0:
-                        progress = min(95, int(downloaded * 95 / total))
-                        if progress - last_progress >= 5:
-                            last_progress = progress
-                            self._report_ota(task_id, "DOWNLOADING", progress)
+            total = int(data.get("size") or 0)
+            if total <= 0:
+                # 兼容旧平台未下发 size：退回单次流式下载
+                request = urllib.request.Request(
+                    url, headers={"User-Agent": "coherer-simulator"})
+                with urllib.request.urlopen(request, timeout=30, context=context) as response:
+                    body = response.read()
+                digest.update(body)
+                downloaded = len(body)
+            else:
+                offset = 0
+                while offset < total and not STOP.is_set():
+                    end = min(offset + OTA_CHUNK_SIZE, total) - 1
+                    attempts = 0
+                    while True:
+                        try:
+                            if (self.ota_drop_once and not self.ota_dropped
+                                    and offset > 0):
+                                # 演练网络中断：同一 offset 的重试会走断点续传
+                                self.ota_dropped = True
+                                print(f"[{self.device_id}] 模拟网络中断 offset={offset}，准备续传")
+                                raise ConnectionError("模拟下载中断")
+                            body = self._fetch_range(url, offset, end, context)
+                            if not body:
+                                raise RuntimeError("Range 响应为空")
+                            digest.update(body)
+                            downloaded += len(body)
+                            offset += len(body)
+                            break
+                        except Exception as e:
+                            attempts += 1
+                            if attempts > OTA_RESUME_RETRIES:
+                                raise
+                            print(f"[{self.device_id}] 断点续传重试 offset={offset}"
+                                  f" ({attempts}/{OTA_RESUME_RETRIES}): {e}")
+                            STOP.wait(min(2.0 * attempts, 5.0))
+                    progress = min(95, int(downloaded * 95 / total))
+                    if progress - last_progress >= 5:
+                        last_progress = progress
+                        self._report_ota(task_id, "DOWNLOADING", progress)
             if downloaded == 0:
                 self._report_ota(task_id, "FAILED", 0, "固件下载为空")
+                return
+            if total > 0 and downloaded != total:
+                self._report_ota(task_id, "FAILED", 0,
+                                 f"固件下载不完整 {downloaded}/{total}")
                 return
             expected = (data.get("sha256") or "").lower()
             actual = digest.hexdigest()
@@ -353,6 +389,17 @@ class VirtualDevice(threading.Thread):
             print(f"[{self.device_id}] OTA 失败: {e}")
         finally:
             self.ota_in_progress = False
+
+    def _fetch_range(self, url, start, end, context):
+        """按 HTTP Range 拉取一个分片；服务端必须返回 206。"""
+        request = urllib.request.Request(url, headers={
+            "User-Agent": "coherer-simulator",
+            "Range": f"bytes={start}-{end}",
+        })
+        with urllib.request.urlopen(request, timeout=30, context=context) as response:
+            if response.status != 206:
+                raise RuntimeError(f"Range 请求返回 {response.status}，期望 206")
+            return response.read()
 
     def _report_ota(self, task_id, status, progress, error=None):
         payload = {"taskId": task_id, "status": status, "progress": progress,
@@ -389,6 +436,8 @@ def main() -> None:
                         help="跳过服务端证书校验（仅排障）")
     parser.add_argument("--ota-fail", action="store_true",
                         help="模拟 OTA 安装失败（验证失败上报与任务状态）")
+    parser.add_argument("--ota-drop-once", action="store_true",
+                        help="下载第 2 个分片时模拟网络中断，验证 Range 断点续传")
     args = parser.parse_args()
 
     port = args.port or (8883 if args.tls else 1883)
@@ -405,7 +454,8 @@ def main() -> None:
         devices = [
             VirtualDevice(args.host, port, args.tenant, item["deviceId"], args.interval,
                           tls=args.tls, ca_file=ca_file, insecure=args.insecure,
-                          device_secret=item["secret"], ota_fail=args.ota_fail)
+                          device_secret=item["secret"], ota_fail=args.ota_fail,
+                          ota_drop_once=args.ota_drop_once)
             for item in credentials
         ]
         mode = "认证设备"
@@ -413,7 +463,7 @@ def main() -> None:
         devices = [
             VirtualDevice(args.host, port, args.tenant, f"{args.prefix}-{i:04d}", args.interval,
                           tls=args.tls, ca_file=ca_file, insecure=args.insecure,
-                          ota_fail=args.ota_fail)
+                          ota_fail=args.ota_fail, ota_drop_once=args.ota_drop_once)
             for i in range(1, args.count + 1)
         ]
         mode = "匿名设备"

@@ -1,9 +1,11 @@
 package com.github.wuzhudexiaopacai.ota.storage;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,21 +39,41 @@ class LocalFirmwareStorageTest {
     }
 
     @Test
-    void store_thenLoadAndDelete() throws Exception {
+    void store_thenOpenAndDelete() throws Exception {
         FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "a.bin", "application/octet-stream", new byte[]{1, 2, 3});
         FirmwareStorage.Stored stored = storage.store(1L, file);
 
-        assertTrue(storage.load("LOCAL", stored.relativePath()).exists());
+        try (InputStream in = storage.openStream("LOCAL", stored.relativePath(), 0, 3)) {
+            assertArrayEquals(new byte[]{1, 2, 3}, in.readAllBytes());
+        }
+        assertEquals(3, storage.size("LOCAL", stored.relativePath()));
         storage.delete("LOCAL", stored.relativePath());
-        assertThrows(Exception.class, () -> storage.load("LOCAL", stored.relativePath()));
+        assertThrows(Exception.class,
+                () -> storage.openStream("LOCAL", stored.relativePath(), 0, 3));
     }
 
     @Test
-    void load_pathTraversal_isRejected() {
+    void openStream_range_readsOnlyRequestedBytes() throws Exception {
         FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
-        assertThrows(IllegalArgumentException.class, () -> storage.load("LOCAL", "../outside.bin"));
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "range.bin", "application/octet-stream",
+                "abcdef".getBytes(StandardCharsets.UTF_8));
+        FirmwareStorage.Stored stored = storage.store(1L, file);
+
+        try (InputStream in = storage.openStream("LOCAL", stored.relativePath(), 1, 3)) {
+            assertArrayEquals("bcd".getBytes(StandardCharsets.UTF_8), in.readAllBytes());
+        }
+        assertThrows(Exception.class,
+                () -> storage.openStream("LOCAL", stored.relativePath(), 5, 2));
+    }
+
+    @Test
+    void openStream_pathTraversal_isRejected() {
+        FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
+        assertThrows(IllegalArgumentException.class,
+                () -> storage.openStream("LOCAL", "../outside.bin", 0, 1));
     }
 
     @Test

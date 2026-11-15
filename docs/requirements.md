@@ -141,6 +141,8 @@
 与版本回退**（`attempt/maxAttempts` 线性退避、旧 attempt 回执丢弃、超时同样进入重试；任务记录
 `from_version`，成功后更新设备当前版本，可基于原任务生成 `ROLLBACK` 任务）。固件支持本地磁盘与
 S3/MinIO 两种存储后端，记录 `storage_type` 并按固件路由，切换默认后端不影响历史固件读取。
+下载接口支持 HTTP Range（`206 Partial Content` / `Content-Range` / 非法范围 `416`），本地文件与 S3
+对象均按 offset/length 读取；模拟器按 256KB 分片下载，网络中断后从断点重试。
 
 ### 3.8 可视化
 

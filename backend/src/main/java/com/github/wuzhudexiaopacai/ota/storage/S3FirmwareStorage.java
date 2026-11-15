@@ -7,6 +7,7 @@ import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.StatObjectArgs;
 import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.io.InputStream;
@@ -17,8 +18,6 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -137,12 +136,23 @@ public class S3FirmwareStorage implements FirmwareStorage {
     }
 
     @Override
-    public Resource load(String storageType, String relativePath) throws Exception {
+    public InputStream openStream(String storageType, String relativePath,
+                                  long offset, long length) throws Exception {
         GetObjectResponse response = requireClient().getObject(GetObjectArgs.builder()
                 .bucket(bucket)
                 .object(relativePath)
+                .offset(offset)
+                .length(length)
                 .build());
-        return new InputStreamResource(response);
+        return response;
+    }
+
+    @Override
+    public long size(String storageType, String relativePath) throws Exception {
+        return requireClient().statObject(StatObjectArgs.builder()
+                .bucket(bucket)
+                .object(relativePath)
+                .build()).size();
     }
 
     @Override

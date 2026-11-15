@@ -1,11 +1,11 @@
 package com.github.wuzhudexiaopacai.ota.storage;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Locale;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Primary;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -47,8 +47,14 @@ public class FirmwareStorageRouter implements FirmwareStorage {
     }
 
     @Override
-    public Resource load(String storageType, String relativePath) throws Exception {
-        return backend(storageType).load(storageType, relativePath);
+    public InputStream openStream(String storageType, String relativePath,
+                                  long offset, long length) throws Exception {
+        return backend(storageType).openStream(storageType, relativePath, offset, length);
+    }
+
+    @Override
+    public long size(String storageType, String relativePath) throws Exception {
+        return backend(storageType).size(storageType, relativePath);
     }
 
     @Override

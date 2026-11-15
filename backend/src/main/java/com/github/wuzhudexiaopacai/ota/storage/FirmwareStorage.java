@@ -1,7 +1,7 @@
 package com.github.wuzhudexiaopacai.ota.storage;
 
 import java.io.IOException;
-import org.springframework.core.io.Resource;
+import java.io.InputStream;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
@@ -14,7 +14,11 @@ public interface FirmwareStorage {
 
     Stored store(Long productId, MultipartFile file) throws IOException;
 
-    Resource load(String storageType, String relativePath) throws Exception;
+    /** 打开 [offset, offset+length) 的固件字节流，用于 HTTP Range 断点续传。 */
+    InputStream openStream(String storageType, String relativePath,
+                           long offset, long length) throws Exception;
+
+    long size(String storageType, String relativePath) throws Exception;
 
     void delete(String storageType, String relativePath);
 

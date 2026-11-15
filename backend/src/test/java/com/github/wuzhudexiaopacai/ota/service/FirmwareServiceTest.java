@@ -1,7 +1,6 @@
 package com.github.wuzhudexiaopacai.ota.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,7 +29,6 @@ import java.nio.charset.StandardCharsets;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -142,48 +140,57 @@ class FirmwareServiceTest {
     }
 
     @Test
-    void download_validSignature_returnsResource() throws Exception {
+    void verifyDownload_validSignature_returnsFirmware() {
         Firmware firmware = firmware(10L, 1L, "1.0.0");
         when(signer.verify(eq(10L), eq("dev-1"), eq(123L), eq("sig"))).thenReturn(true);
         when(firmwareMapper.selectById(10L)).thenReturn(firmware);
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device(1L, "ONLINE"));
-        when(storage.load("LOCAL", "1/fw.bin")).thenReturn(
-                new ByteArrayResource("abc".getBytes(StandardCharsets.UTF_8)));
 
-        FirmwareService.Download download = service.download(10L, "dev-1", 123L, "sig");
+        Firmware result = service.verifyDownload(10L, "dev-1", 123L, "sig");
 
-        assertNotNull(download.resource());
-        assertEquals("1.0.0", download.firmware().getVersion());
+        assertEquals("1.0.0", result.getVersion());
     }
 
     @Test
-    void download_invalidSignature_isRejected() {
+    void openStream_delegatesOffsetAndLength() throws Exception {
+        Firmware firmware = firmware(10L, 1L, "1.0.0");
+        when(storage.openStream("LOCAL", "1/fw.bin", 1, 2)).thenReturn(
+                new java.io.ByteArrayInputStream("bc".getBytes(StandardCharsets.UTF_8)));
+
+        var stream = service.openStream(firmware, 1, 2);
+
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+                "bc".getBytes(StandardCharsets.UTF_8), stream.readAllBytes());
+    }
+
+    @Test
+    void verifyDownload_invalidSignature_isRejected() {
         when(signer.verify(any(), any(), eq(123L), any())).thenReturn(false);
 
         BizException exception = assertThrows(BizException.class,
-                () -> service.download(10L, "dev-1", 123L, "bad"));
+                () -> service.verifyDownload(10L, "dev-1", 123L, "bad"));
         assertEquals(403, exception.getCode());
     }
 
     @Test
-    void download_productMismatch_isRejected() {
+    void verifyDownload_productMismatch_isRejected() {
         when(signer.verify(any(), any(), anyLong(), any())).thenReturn(true);
         when(firmwareMapper.selectById(10L)).thenReturn(firmware(10L, 1L, "1.0.0"));
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device(2L, "ONLINE"));
 
         BizException exception = assertThrows(BizException.class,
-                () -> service.download(10L, "dev-1", 123L, "sig"));
+                () -> service.verifyDownload(10L, "dev-1", 123L, "sig"));
         assertEquals(403, exception.getCode());
     }
 
     @Test
-    void download_disabledDevice_isRejected() {
+    void verifyDownload_disabledDevice_isRejected() {
         when(signer.verify(any(), any(), anyLong(), any())).thenReturn(true);
         when(firmwareMapper.selectById(10L)).thenReturn(firmware(10L, 1L, "1.0.0"));
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device(1L, "DISABLED"));
 
         BizException exception = assertThrows(BizException.class,
-                () -> service.download(10L, "dev-1", 123L, "sig"));
+                () -> service.verifyDownload(10L, "dev-1", 123L, "sig"));
         assertEquals(403, exception.getCode());
     }
 

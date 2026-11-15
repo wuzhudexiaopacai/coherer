@@ -428,6 +428,20 @@ OTA 成功时也用目标固件版本更新设备版本。任务创建时快照 
 `firmware.storage_type` 决定读取/删除路由。S3 在 local 模式下不可达只告警，不阻塞启动。
 **验证**：S3 上传 1.1.0 后切回 local，再次下发 1.1.0 仍下载成功。
 
+### 11.15 越界 Range 不会自动抛异常
+
+**现象**：`Range: bytes=99-100` 请求 3 字节固件，`HttpRange.getRangeEnd(3)` 会把 end 钳到 2，
+start 仍是 99，计算出的 length 为负数，`Content-Length` 设置失败返回 500。
+**修复**：显式计算后校验 `start >= total || end < start`，返回 416 + `Content-Range: bytes */total`。
+**验证**：`download_invalidRange_returns416`；正常 `bytes=1-2` 返回 206。
+
+### 11.16 StreamingResponseBody 的 Content-Length 必须手动设置
+
+**现象**：Range 响应没有长度，客户端无法判断分片是否完整。
+**修复**：控制器先算 `length`，同时设置 `Content-Length`、`Accept-Ranges: bytes` 和 `Content-Range`；
+`StreamingResponseBody` 内部 `try (input) { transferTo }`，保证 S3/文件流关闭。
+**验证**：模拟器日志出现 `断点续传重试 offset=262144`，Nginx 访问日志连续 8 个 206（2MB / 256KB）。
+
 ## 12. 提交索引
 
 | 提交 | 内容 |

@@ -1,10 +1,14 @@
 package com.github.wuzhudexiaopacai.ota.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -12,6 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.github.wuzhudexiaopacai.audit.AuditLogService;
@@ -24,15 +29,17 @@ import com.github.wuzhudexiaopacai.ota.vo.FirmwareVO;
 import com.github.wuzhudexiaopacai.ota.vo.OtaTaskVO;
 import com.github.wuzhudexiaopacai.security.DataScope;
 import com.github.wuzhudexiaopacai.security.DataScopeService;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 class OtaControllerTest {
@@ -156,29 +163,71 @@ class OtaControllerTest {
 
     @Test
     void download_validSignature_streamsBinary() throws Exception {
-        Firmware firmware = new Firmware();
-        firmware.setId(10L);
-        firmware.setFileName("fw.bin");
-        firmware.setSizeBytes(3L);
-        when(firmwareService.download(10L, "dev-1", 123L, "sig")).thenReturn(
-                new FirmwareService.Download(firmware,
-                        new ByteArrayResource("abc".getBytes(StandardCharsets.UTF_8))));
+        Firmware firmware = firmware();
+        when(firmwareService.verifyDownload(10L, "dev-1", 123L, "sig")).thenReturn(firmware);
+        when(firmwareService.openStream(firmware, 0, 3)).thenReturn(
+                new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)));
 
-        downloadMvc.perform(get("/api/ota/download/10")
+        ResultActions actions = downloadMvc.perform(get("/api/ota/download/10")
                         .param("deviceId", "dev-1")
                         .param("expires", "123")
                         .param("signature", "sig"))
+                .andExpect(request().asyncStarted());
+        MvcResult result = actions.andReturn();
+
+        downloadMvc.perform(asyncDispatch(result))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType(MediaType.APPLICATION_OCTET_STREAM))
                 .andExpect(content().bytes("abc".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(header().longValue("Content-Length", 3))
+                .andExpect(header().string("Accept-Ranges", "bytes"))
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(header().string("Content-Disposition",
                         org.hamcrest.Matchers.containsString("fw.bin")));
     }
 
     @Test
+    void download_range_returnsPartialContent() throws Exception {
+        Firmware firmware = firmware();
+        when(firmwareService.verifyDownload(10L, "dev-1", 123L, "sig")).thenReturn(firmware);
+        when(firmwareService.openStream(firmware, 1, 2)).thenReturn(
+                new ByteArrayInputStream("bc".getBytes(StandardCharsets.UTF_8)));
+
+        MvcResult result = downloadMvc.perform(get("/api/ota/download/10")
+                        .param("deviceId", "dev-1")
+                        .param("expires", "123")
+                        .param("signature", "sig")
+                        .header("Range", "bytes=1-2"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        downloadMvc.perform(asyncDispatch(result))
+                .andExpect(status().isPartialContent())
+                .andExpect(content().bytes("bc".getBytes(StandardCharsets.UTF_8)))
+                .andExpect(header().string("Content-Range", "bytes 1-2/3"))
+                .andExpect(header().longValue("Content-Length", 2))
+                .andExpect(header().string("Accept-Ranges", "bytes"));
+    }
+
+    @Test
+    void download_invalidRange_returns416() throws Exception {
+        Firmware firmware = firmware();
+        when(firmwareService.verifyDownload(10L, "dev-1", 123L, "sig")).thenReturn(firmware);
+
+        downloadMvc.perform(get("/api/ota/download/10")
+                        .param("deviceId", "dev-1")
+                        .param("expires", "123")
+                        .param("signature", "sig")
+                        .header("Range", "bytes=99-100"))
+                .andExpect(status().isRequestedRangeNotSatisfiable())
+                .andExpect(header().string("Content-Range", "bytes */3"));
+
+        verify(firmwareService, never()).openStream(any(), anyLong(), anyLong());
+    }
+
+    @Test
     void download_invalidSignature_returnsForbidden() throws Exception {
-        when(firmwareService.download(10L, "dev-1", 123L, "bad"))
+        when(firmwareService.verifyDownload(10L, "dev-1", 123L, "bad"))
                 .thenThrow(new BizException(403, "下载签名无效或已过期"));
 
         downloadMvc.perform(get("/api/ota/download/10")
@@ -187,5 +236,13 @@ class OtaControllerTest {
                         .param("signature", "bad"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value(403));
+    }
+
+    private Firmware firmware() {
+        Firmware firmware = new Firmware();
+        firmware.setId(10L);
+        firmware.setFileName("fw.bin");
+        firmware.setSizeBytes(3L);
+        return firmware;
     }
 }

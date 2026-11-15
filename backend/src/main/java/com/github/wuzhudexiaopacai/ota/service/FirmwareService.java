@@ -13,13 +13,13 @@ import com.github.wuzhudexiaopacai.ota.storage.FirmwareStorage;
 import com.github.wuzhudexiaopacai.ota.vo.FirmwareVO;
 import com.github.wuzhudexiaopacai.product.entity.Product;
 import com.github.wuzhudexiaopacai.product.mapper.ProductMapper;
+import java.io.InputStream;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -122,7 +122,9 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
                 + "?deviceId=" + deviceId + "&expires=" + expires + "&signature=" + signature;
     }
 
-    public Download download(Long firmwareId, String deviceId, long expires, String signature) {
+    /** 校验签名/设备/产品后返回固件元数据，具体读取由调用方按 Range 打开。 */
+    public Firmware verifyDownload(Long firmwareId, String deviceId, long expires,
+                                   String signature) {
         if (!downloadSigner.verify(firmwareId, deviceId, expires, signature)) {
             throw new BizException(403, "下载签名无效或已过期");
         }
@@ -134,15 +136,16 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
         if ("DISABLED".equals(device.getStatus())) {
             throw new BizException(403, "设备已禁用");
         }
-        try {
-            return new Download(firmware,
-                    storage.load(firmware.getStorageType(), firmware.getStoragePath()));
-        } catch (Exception e) {
-            throw new BizException(404, "固件文件不存在");
-        }
+        return firmware;
     }
 
-    public record Download(Firmware firmware, Resource resource) {
+    public InputStream openStream(Firmware firmware, long offset, long length) {
+        try {
+            return storage.openStream(firmware.getStorageType(), firmware.getStoragePath(),
+                    offset, length);
+        } catch (Exception e) {
+            throw new BizException(500, "固件读取失败: " + e.getMessage());
+        }
     }
 
     private FirmwareVO toVO(Firmware firmware) {
