@@ -541,7 +541,7 @@ onBeforeUnmount(() => {
           <template #default="{ row }">
             <div class="file-cell">
               <span>{{ row.fileName }}</span>
-              <span class="tiny">{{ fmtSize(row.sizeBytes) }}</span>
+              <span class="tiny">{{ fmtSize(row.sizeBytes) }} · {{ row.storageType || 'LOCAL' }}</span>
             </div>
           </template>
         </el-table-column>

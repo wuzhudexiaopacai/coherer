@@ -72,13 +72,14 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
         firmware.setSizeBytes(stored.size());
         firmware.setSha256(stored.sha256());
         firmware.setStoragePath(stored.relativePath());
+        firmware.setStorageType(storage.type());
         firmware.setCreatedBy(operator);
         firmware.setCreatedAt(OffsetDateTime.now());
         try {
             save(firmware);
         } catch (RuntimeException e) {
-            // 元数据写入失败时回滚已落盘文件，避免孤儿文件占满磁盘
-            storage.delete(stored.relativePath());
+            // 元数据写入失败时回滚已落盘/已上传文件，避免孤儿对象占满存储
+            storage.delete(storage.type(), stored.relativePath());
             throw e;
         }
         return toVO(firmware);
@@ -111,7 +112,7 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
             throw new BizException(409, "该固件仍有进行中的升级任务，暂不能删除");
         }
         removeById(id);
-        storage.delete(firmware.getStoragePath());
+        storage.delete(firmware.getStorageType(), firmware.getStoragePath());
     }
 
     public String downloadUrl(Firmware firmware, String deviceId) {
@@ -134,7 +135,8 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
             throw new BizException(403, "设备已禁用");
         }
         try {
-            return new Download(firmware, storage.load(firmware.getStoragePath()));
+            return new Download(firmware,
+                    storage.load(firmware.getStorageType(), firmware.getStoragePath()));
         } catch (Exception e) {
             throw new BizException(404, "固件文件不存在");
         }

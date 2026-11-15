@@ -83,6 +83,14 @@ python simulator.py --credentials creds.json --tls
 # 4.1 OTA：打开前端「固件升级」，选择产品上传固件并下发到同产品设备
 #     设备经 10 分钟有效的签名 URL 下载，校验 SHA256 后安装并回报进度
 
+# 4.2 可选：S3/MinIO 固件对象存储
+#     deploy/.env 配置 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD 后：
+#     cd deploy && docker compose -f docker-compose.yml -f docker-compose.s3.yml \
+#       --profile s3 up -d minio
+#     backend/.env 设置 COHERER_OTA_STORAGE_TYPE=s3 及
+#       COHERER_OTA_S3_ENDPOINT=http://minio:9000 / ACCESS_KEY / SECRET_KEY / BUCKET
+#     切回 local 后，历史 S3 固件仍按 firmware.storage_type 路由读取
+
 # 5. 查看数据
 #    遥测查询: http://localhost:8081/api/devices/<deviceId>/telemetry?limit=5
 #    EMQX 控制台: http://localhost:18083 (admin / EMQX_DASHBOARD_PASSWORD)
@@ -172,7 +180,7 @@ coherer/
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
 | M2 | 物模型、设备影子、在线状态（TTL 兜底）、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL、空间树、设备启停/删除/密钥轮换、用户管理、命令下发、事件上报、边缘主机/网关（命令转发 + 子设备数据代理） | ✅ 已完成 |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、时间水位 | 🟡 批量写入/幂等/共享订阅/命令下发/事件上报已完成，Kafka 与拆服务待做 |
-| M4 | OTA、场景联动、通知渠道、mTLS 加固、多租户 | 🟡 **OTA 单设备 + 批量灰度 + 自动重试 + 版本回退已完成**（设备/空间/全量目标、分批、暂停/恢复/取消、失败率熔断、退避重试、from_version 回退、签名下载/进度/超时）；对象存储、断点续传、场景联动、通知渠道、mTLS、多租户待做 |
+| M4 | OTA、场景联动、通知渠道、mTLS 加固、多租户 | 🟡 **OTA 单设备 + 批量灰度 + 自动重试 + 版本回退 + 对象存储已完成**（设备/空间/全量目标、分批、暂停/恢复/取消、失败率熔断、退避重试、from_version 回退、本地/S3 存储、签名下载/进度/超时）；断点续传、场景联动、通知渠道、mTLS、多租户待做 |
 | M5 | K8s+Helm、HA、10 万连接压测报告 | 🟡 Prometheus/Grafana/Alertmanager/Zipkin 已完成，HA 与压测待做 |
 
 ## 文档

@@ -250,6 +250,7 @@ export interface Firmware {
   /** 后端 Long 统一序列化为字符串 */
   sizeBytes: number | string
   sha256: string
+  storageType?: 'LOCAL' | 'S3'
   createdBy?: string
   createdAt: string
 }

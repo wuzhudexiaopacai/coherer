@@ -62,6 +62,7 @@ class FirmwareServiceTest {
         ReflectionTestUtils.setField(service, "baseMapper", firmwareMapper);
         ReflectionTestUtils.setField(service, "publicBaseUrl", "https://iot.example.com");
         ReflectionTestUtils.setField(service, "downloadTtlSeconds", 600L);
+        when(storage.type()).thenReturn("LOCAL");
     }
 
     @Test
@@ -125,7 +126,7 @@ class FirmwareServiceTest {
 
         assertThrows(RuntimeException.class,
                 () -> service.upload(1L, "1.0.0", emptyFile(), "admin"));
-        verify(storage).delete("1/uuid-fw.bin");
+        verify(storage).delete("LOCAL", "1/uuid-fw.bin");
     }
 
     @Test
@@ -146,7 +147,7 @@ class FirmwareServiceTest {
         when(signer.verify(eq(10L), eq("dev-1"), eq(123L), eq("sig"))).thenReturn(true);
         when(firmwareMapper.selectById(10L)).thenReturn(firmware);
         when(deviceLookupService.getByDeviceId("dev-1")).thenReturn(device(1L, "ONLINE"));
-        when(storage.load("1/fw.bin")).thenReturn(
+        when(storage.load("LOCAL", "1/fw.bin")).thenReturn(
                 new ByteArrayResource("abc".getBytes(StandardCharsets.UTF_8)));
 
         FirmwareService.Download download = service.download(10L, "dev-1", 123L, "sig");
@@ -203,7 +204,7 @@ class FirmwareServiceTest {
 
         BizException exception = assertThrows(BizException.class, () -> service.delete(10L));
         assertEquals(409, exception.getCode());
-        verify(storage, never()).delete(any());
+        verify(storage, never()).delete(any(), any());
     }
 
     @Test
@@ -213,7 +214,7 @@ class FirmwareServiceTest {
 
         service.delete(10L);
 
-        verify(storage).delete("1/fw.bin");
+        verify(storage).delete("LOCAL", "1/fw.bin");
     }
 
     private Firmware firmware(Long id, Long productId, String version) {
@@ -225,6 +226,7 @@ class FirmwareServiceTest {
         firmware.setSizeBytes(3L);
         firmware.setSha256("a".repeat(64));
         firmware.setStoragePath("1/fw.bin");
+        firmware.setStorageType("LOCAL");
         return firmware;
     }
 

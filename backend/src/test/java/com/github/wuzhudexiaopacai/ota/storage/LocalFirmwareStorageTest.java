@@ -13,14 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
 
-class FirmwareStorageTest {
+class LocalFirmwareStorageTest {
 
     @TempDir
     Path tempDir;
 
     @Test
     void store_computesSha256AndSanitizesName() throws Exception {
-        FirmwareStorage storage = new FirmwareStorage(tempDir.toString());
+        FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
         byte[] content = "firmware-binary".getBytes(StandardCharsets.UTF_8);
         MockMultipartFile file = new MockMultipartFile(
                 "file", "my firmware v1.bin", "application/octet-stream", content);
@@ -38,25 +38,25 @@ class FirmwareStorageTest {
 
     @Test
     void store_thenLoadAndDelete() throws Exception {
-        FirmwareStorage storage = new FirmwareStorage(tempDir.toString());
+        FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "a.bin", "application/octet-stream", new byte[]{1, 2, 3});
         FirmwareStorage.Stored stored = storage.store(1L, file);
 
-        assertTrue(storage.load(stored.relativePath()).exists());
-        storage.delete(stored.relativePath());
-        assertThrows(Exception.class, () -> storage.load(stored.relativePath()));
+        assertTrue(storage.load("LOCAL", stored.relativePath()).exists());
+        storage.delete("LOCAL", stored.relativePath());
+        assertThrows(Exception.class, () -> storage.load("LOCAL", stored.relativePath()));
     }
 
     @Test
     void load_pathTraversal_isRejected() {
-        FirmwareStorage storage = new FirmwareStorage(tempDir.toString());
-        assertThrows(IllegalArgumentException.class, () -> storage.load("../outside.bin"));
+        FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
+        assertThrows(IllegalArgumentException.class, () -> storage.load("LOCAL", "../outside.bin"));
     }
 
     @Test
     void store_emptyFile_isRejected() {
-        FirmwareStorage storage = new FirmwareStorage(tempDir.toString());
+        FirmwareStorage storage = new LocalFirmwareStorage(tempDir.toString());
         MockMultipartFile file = new MockMultipartFile(
                 "file", "empty.bin", "application/octet-stream", new byte[0]);
         assertThrows(IllegalArgumentException.class, () -> storage.store(1L, file));

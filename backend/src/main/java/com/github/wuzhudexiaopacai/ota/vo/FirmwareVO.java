@@ -18,6 +18,8 @@ public class FirmwareVO {
 
     private String sha256;
 
+    private String storageType;
+
     private String createdBy;
 
     private OffsetDateTime createdAt;

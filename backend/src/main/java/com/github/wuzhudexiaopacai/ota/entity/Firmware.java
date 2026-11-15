@@ -30,6 +30,9 @@ public class Firmware {
 
     private String storagePath;
 
+    /** LOCAL / S3 */
+    private String storageType;
+
     private String createdBy;
 
     private OffsetDateTime createdAt;

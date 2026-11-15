@@ -546,6 +546,7 @@ erDiagram
         varchar version "版本（产品内唯一）"
         varchar file_name "原始文件名"
         varchar storage_path "本地/对象存储路径"
+        varchar storage_type "LOCAL/S3"
         varchar sha256 "SHA-256"
         bigint size_bytes "大小"
         timestamp created_at

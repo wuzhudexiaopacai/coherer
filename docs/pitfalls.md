@@ -403,6 +403,31 @@ INSERT INTO coherer.d_dev1 USING coherer.stb_telemetry TAGS (?, ?, ?)
 OTA 成功时也用目标固件版本更新设备版本。任务创建时快照 `from_version`。
 **验证**：设备上报 1.0.0 → 升级 1.2.0 → 任务记录 1.0.0→1.2.0 → 回退任务 1.2.0→1.0.0 成功。
 
+### 11.12 MinIO 镜像 tag 的 layer 拉取失败
+
+**现象**：`docker pull minio/minio:RELEASE.2024-10-13...` 报
+`could not fetch content descriptor ... not found`，容器无法启动。
+**修复**：改用可用镜像并按 digest 固定：
+`minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e`。
+**验证**：`/minio/health/live` 返回 200，后端日志“S3 固件桶已创建”。
+
+### 11.13 宿主 shell 的 MINIO_ROOT_* 覆盖 compose .env
+
+**现象**：`deploy/.env` 配置了 MinIO 口令，容器仍用 `admin/root` 启动并报
+`MINIO_ROOT_PASSWORD length at least 8`。
+**原因**：Compose 环境变量优先级中，shell 环境高于 `--env-file`。
+**修复**：启动前 `env -u MINIO_ROOT_USER -u MINIO_ROOT_PASSWORD docker compose ...`，
+或清理 shell 中同名变量。
+**验证**：`docker inspect coherer-minio` 中口令来自 `deploy/.env`，健康检查 200。
+
+### 11.14 切回本地存储后仍要能读历史 S3 固件
+
+**现象**：默认后端从 s3 切回 local 后，历史 S3 固件下载失败。
+**原因**：S3 Bean 之前用 `storage-type=s3` 条件装配，切换后 Bean 消失。
+**修复**：只要配置了 S3 凭据就初始化 S3 Bean；默认后端仅决定新上传写哪里，
+`firmware.storage_type` 决定读取/删除路由。S3 在 local 模式下不可达只告警，不阻塞启动。
+**验证**：S3 上传 1.1.0 后切回 local，再次下发 1.1.0 仍下载成功。
+
 ## 12. 提交索引
 
 | 提交 | 内容 |
