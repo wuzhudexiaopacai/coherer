@@ -63,27 +63,45 @@ public class DashboardService {
      * 对看板可接受，也避免多人同时打开页面放大查询。
      */
     public OverviewVO overview(List<Long> spaceIds) {
-        String key = spaceIds == null ? "__all__"
+        String tenant = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
+        String scope = spaceIds == null ? "__all__"
                 : spaceIds.stream().sorted().map(String::valueOf)
                         .collect(Collectors.joining(","));
-        return overviewCache.get(key, ignored -> computeOverview(spaceIds));
+        String key = tenant + "|" + scope;
+        return overviewCache.get(key, ignored -> computeOverview(tenant, spaceIds));
     }
 
-    private OverviewVO computeOverview(List<Long> spaceIds) {
+    private OverviewVO computeOverview(String tenant, List<Long> spaceIds) {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return new OverviewVO(0, 0, 0, 0, 0, 0, 0, 0);
         }
         long telemetryTotal = 0;
         long telemetryToday = 0;
         if (spaceIds == null || !spaceIds.isEmpty()) {
-            Object[] args = spaceIds == null ? new Object[0] : spaceIds.toArray();
             String in = inClause(spaceIds);
+            Object[] totalArgs = new Object[1 + (spaceIds == null ? 0 : spaceIds.size())];
+            totalArgs[0] = tenant;
+            if (spaceIds != null) {
+                for (int i = 0; i < spaceIds.size(); i++) {
+                    totalArgs[i + 1] = spaceIds.get(i);
+                }
+            }
             telemetryTotal = countTelemetry("SELECT COUNT(*) FROM coherer.stb_telemetry"
-                    + (in.isEmpty() ? "" : " WHERE space_id IN (" + in + ")"), args);
+                    + " WHERE tenant_id = ?"
+                    + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")"), totalArgs);
             long todayStart = LocalDate.now().atStartOfDay(ZoneId.systemDefault())
                     .toInstant().toEpochMilli();
-            telemetryToday = countTelemetry("SELECT COUNT(*) FROM coherer.stb_telemetry WHERE ts >= "
-                    + todayStart + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")"), args);
+            Object[] todayArgs = new Object[2 + (spaceIds == null ? 0 : spaceIds.size())];
+            todayArgs[0] = tenant;
+            todayArgs[1] = todayStart;
+            if (spaceIds != null) {
+                for (int i = 0; i < spaceIds.size(); i++) {
+                    todayArgs[i + 2] = spaceIds.get(i);
+                }
+            }
+            telemetryToday = countTelemetry("SELECT COUNT(*) FROM coherer.stb_telemetry"
+                    + " WHERE tenant_id = ? AND ts >= ?"
+                    + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")"), todayArgs);
         }
         return new OverviewVO(
                 countVisibleProducts(spaceIds),
@@ -102,20 +120,23 @@ public class DashboardService {
         if (spaceIds != null && spaceIds.isEmpty()) {
             return List.of();
         }
+        String tenant = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
         String in = inClause(spaceIds);
         String sql = "SELECT _wstart AS win_start, COUNT(*) AS cnt FROM coherer.stb_telemetry "
-                + "WHERE ts >= " + since
+                + "WHERE tenant_id = ? AND ts >= " + since
                 + (in.isEmpty() ? "" : " AND space_id IN (" + in + ")")
                 + " INTERVAL(1h)";
-        try {
-            if (spaceIds == null) {
-                return tdJdbc.query(sql, (rs, rowNum) -> new TrendPointVO(
-                        rs.getTimestamp("win_start").toInstant().toString(),
-                        rs.getLong("cnt")));
+        Object[] args = new Object[1 + (spaceIds == null ? 0 : spaceIds.size())];
+        args[0] = tenant;
+        if (spaceIds != null) {
+            for (int i = 0; i < spaceIds.size(); i++) {
+                args[i + 1] = spaceIds.get(i);
             }
+        }
+        try {
             return tdJdbc.query(sql, (rs, rowNum) -> new TrendPointVO(
                     rs.getTimestamp("win_start").toInstant().toString(),
-                    rs.getLong("cnt")), spaceIds.toArray());
+                    rs.getLong("cnt")), args);
         } catch (Exception e) {
             log.warn("TDengine 趋势查询失败: {}", e.getMessage());
             return List.of();
@@ -123,9 +144,10 @@ public class DashboardService {
     }
 
     public List<TelemetryVO> recentTelemetry(int limit, List<Long> spaceIds) {
+        String tenant = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
         return spaceIds == null
-                ? telemetryTdStore.recentAll(limit)
-                : telemetryTdStore.recentBySpaces(limit, spaceIds);
+                ? telemetryTdStore.recentAll(tenant, limit)
+                : telemetryTdStore.recentBySpaces(tenant, limit, spaceIds);
     }
 
     /**

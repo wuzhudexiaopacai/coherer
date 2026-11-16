@@ -40,6 +40,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.github.wuzhudexiaopacai.security.TenantContext;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class OtaRolloutServiceTest {
@@ -74,9 +77,13 @@ class OtaRolloutServiceTest {
         spaceService = mock(SpaceService.class);
         projectScopeService = mock(ProjectScopeService.class);
         otaService = mock(OtaService.class);
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        when(tenantLookup.defaultProjectId("default")).thenReturn(1L);
+        TenantContext.set("default");
         service = new OtaRolloutService(rolloutMapper, rolloutDeviceMapper, taskMapper,
                 firmwareMapper, firmwareService, deviceLookupService, deviceMapper,
-                spaceService, projectScopeService, otaService, new SimpleMeterRegistry());
+                spaceService, projectScopeService, tenantLookup, otaService,
+                new SimpleMeterRegistry());
         when(projectScopeService.resolveSpaceIds(any(), any(), any()))
                 .thenReturn(List.of(100L, 101L, 200L));
 
@@ -94,6 +101,11 @@ class OtaRolloutServiceTest {
         when(rolloutDeviceMapper.insert(any(OtaRolloutDevice.class))).thenReturn(1);
         when(rolloutDeviceMapper.update(any(), any())).thenReturn(1);
         when(taskMapper.selectList(any())).thenReturn(List.of());
+    }
+
+    @AfterEach
+    void clearTenant() {
+        TenantContext.clear();
     }
 
     @Test

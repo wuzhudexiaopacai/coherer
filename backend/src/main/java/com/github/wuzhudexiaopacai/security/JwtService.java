@@ -62,10 +62,15 @@ public class JwtService {
     }
 
     private String issue(SysUser user, String type, long ttlSeconds, String jti) {
+        if (user.getTenantId() == null || user.getTenantId().isBlank()) {
+            throw new IllegalStateException("用户缺少租户信息");
+        }
         Instant now = Instant.now();
         var builder = Jwts.builder()
                 .subject(user.getUsername())
                 .claim("uid", String.valueOf(user.getId()))
+                .claim("tenant", user.getTenantId())
+                .claim("platform", user.getPlatformAdmin() != null && user.getPlatformAdmin() == 1)
                 .claim("role", user.getRole())
                 .claim("ver", user.getTokenVersion() == null ? 0 : user.getTokenVersion())
                 .claim("type", type);

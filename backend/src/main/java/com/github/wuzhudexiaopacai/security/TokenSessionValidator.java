@@ -27,13 +27,15 @@ public class TokenSessionValidator {
             .maximumSize(10_000)
             .build();
 
-    public boolean isValid(String username, Integer tokenVersion) {
-        if (username == null) {
+    public boolean isValid(String tenantId, String username, Integer tokenVersion) {
+        if (tenantId == null || username == null) {
             return false;
         }
-        SysUser user = cache.get(username, name -> Optional.ofNullable(
+        String key = tenantId + ":" + username;
+        SysUser user = cache.get(key, ignored -> Optional.ofNullable(
                         userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
-                                .eq(SysUser::getUsername, name)
+                                .eq(SysUser::getTenantId, tenantId)
+                                .eq(SysUser::getUsername, username)
                                 .last("limit 1"))))
                 .orElse(null);
         if (user == null || !"ACTIVE".equals(user.getStatus())) {
@@ -44,9 +46,9 @@ public class TokenSessionValidator {
         return current == token;
     }
 
-    public void invalidate(String username) {
+    public void invalidate(String tenantId, String username) {
         if (username != null) {
-            cache.invalidate(username);
+            cache.invalidate((tenantId == null ? "" : tenantId) + ":" + username);
         }
     }
 }

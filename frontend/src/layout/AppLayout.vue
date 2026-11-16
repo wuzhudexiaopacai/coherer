@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Box, Cpu, Document, Fold, Folder, Monitor, Odometer, OfficeBuilding, UploadFilled, User } from '@element-plus/icons-vue'
+import { Bell, Box, Cpu, Document, Fold, Folder, Monitor, Odometer, OfficeBuilding, Platform, UploadFilled, User } from '@element-plus/icons-vue'
 import { mqttConnected, subscribeRealtime } from '../realtime/mqtt'
 import { useAuthStore } from '../stores/auth'
 import { useProjectStore } from '../stores/projects'
@@ -25,8 +25,9 @@ onMounted(async () => {
   await projectStore.ensureLoaded(true)
   await spaceStore.ensureLoaded(true)
   // 全平台角色才做全局通配符订阅；空间受限用户的通配符会被 ACL 拒绝
-  if (auth.user?.spaceId == null) {
-    unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', () => {})
+  const tenantId = auth.user?.tenantId
+  if (tenantId && auth.user?.spaceId == null) {
+    unsubscribeRealtime = subscribeRealtime(`${tenantId}/+/thing/property/report`, () => {})
   }
 })
 
@@ -137,6 +138,15 @@ watch(
           <el-icon><Folder /></el-icon>
           <span>项目管理</span>
         </router-link>
+        <router-link
+          v-if="auth.isPlatformAdmin"
+          to="/tenants"
+          class="nav-item"
+          active-class="active"
+        >
+          <el-icon><Platform /></el-icon>
+          <span>租户管理</span>
+        </router-link>
         <router-link to="/spaces" class="nav-item" active-class="active">
           <el-icon><OfficeBuilding /></el-icon>
           <span>空间管理</span>
@@ -226,6 +236,9 @@ watch(
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item disabled>{{ auth.user?.username }}</el-dropdown-item>
+                <el-dropdown-item v-if="auth.user?.tenantName" disabled>
+                  租户：{{ auth.user.tenantName }}（{{ auth.user.tenantId }}）
+                </el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>

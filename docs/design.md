@@ -432,16 +432,19 @@ erDiagram
     OTA_ROLLOUT ||--o{ OTA_TASK : "分批下发"
 
     TENANT {
-        bigint id PK
-        varchar code UK "租户编码"
+        varchar id PK "租户代码，同时作为业务表 tenant_id"
         varchar name "名称"
-        varchar status "状态"
+        varchar status "ACTIVE/DISABLED"
+        varchar plan "STANDARD/PRO/ENTERPRISE/TRIAL"
+        varchar description
+        bigint default_project_id "开通时创建的默认项目"
+        bigint default_space_id "开通时创建的默认空间"
         timestamp created_at
     }
     PROJECT {
         bigint id PK
-        bigint tenant_id FK
-        varchar code UK "项目编码"
+        varchar tenant_id FK
+        varchar code "项目编码，租户内唯一"
         varchar name "项目名"
         varchar status "ACTIVE/DISABLED"
         varchar description
@@ -460,10 +463,11 @@ erDiagram
     }
     SYS_USER {
         bigint id PK
-        bigint tenant_id FK
-        varchar username UK "登录名"
+        varchar tenant_id FK
+        varchar username "登录名，租户内唯一"
         varchar password_hash "bcrypt 哈希"
         varchar nickname "昵称"
+        smallint platform_admin "1=平台管理员（仅 default 租户 admin）"
         varchar status "状态"
     }
     SYS_ROLE {
@@ -474,8 +478,8 @@ erDiagram
     }
     PRODUCT {
         bigint id PK
-        bigint tenant_id FK
-        varchar product_key UK "产品标识"
+        varchar tenant_id FK
+        varchar product_key "产品标识，租户内唯一"
         varchar name "产品名"
         varchar category "品类"
         varchar node_type "直连/网关"
@@ -585,8 +589,10 @@ erDiagram
     }
     OTA_ROLLOUT {
         bigint id PK
+        varchar tenant_id FK
         bigint firmware_id FK
         bigint product_id FK
+        bigint project_id "批次所属项目"
         varchar target_type "DEVICE/SPACE/ALL"
         varchar status "PENDING/RUNNING/PAUSED/SUCCESS/PARTIAL_FAILED/FAILED/CANCELED"
         int batch_size "每批设备数"
@@ -597,6 +603,7 @@ erDiagram
     }
     OTA_ROLLOUT_DEVICE {
         bigint id PK
+        varchar tenant_id FK
         bigint rollout_id FK
         varchar device_id
         int batch_no
@@ -651,8 +658,31 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 | `coherer:status:device:{deviceId}` | String | 无 | 在线状态 `1`/`0`，上下线事件维护 |
 | `coherer:latest:device:{deviceId}` | Hash | 24 h | 最新遥测快照（属性→值） |
 | `coherer:cmd:{commandId}` | String | 命令超时 + 5 min | 命令状态缓存，避免回调丢失 |
-| `coherer:token:refresh:{userId}` | String | 7 d | 刷新令牌白名单 |
+| `coherer:token:refresh:{jti}` | String | 7 d | 刷新令牌白名单；值为 `tenantId\|username`，防跨租户重放 |
+| `coherer:auth:login:{tenantId\|username}` | String | 5 min | 登录失败计数（另叠加客户端 IP 维度） |
 | `coherer:dedup:device:{deviceId}` | String | 10 min | 消息幂等去重窗口 |
+
+### 5.4 多租户上下文与隔离
+
+租户是最外层边界，`tenant.id`（如 `default`、`acme`）直接作为各业务表的 `tenant_id`。
+
+| 路径 | 租户来源 | 说明 |
+|---|---|---|
+| REST | JWT `tenant` 声明 | `JwtAuthFilter` 校验租户存在且 ACTIVE 后写入 `TenantContext`，请求结束清理 |
+| 登录/刷新 | 请求 `tenantCode` / refresh token `tenant` | 校验租户状态后 `TenantContext.callAs` 执行用户查询与令牌签发 |
+| MQTT 上行 | 主题第一段 `{tenant}` | 网关按主题租户 `runAs` 后再分发；ACL 同时校验设备/主机/用户所属租户 |
+| 定时任务 | 无 | 在线巡检、命令超时、OTA 重试/超时/灰度、告警预热显式 `runBypass` |
+| 租户开通 | 平台管理员租户 | 插入租户后 `runBypass` 创建默认项目/空间/管理员，再恢复平台租户上下文 |
+
+隔离实现：
+
+- MyBatis-Plus `TenantLineInnerInterceptor` 为所有业务表自动追加 `tenant_id = ?`；`tenant` 表自身忽略。
+- 上下文缺失时 `TenantContext.requireTenant()` 抛异常（fail-closed），禁止“忘加条件即全量查询”。
+- TDengine 所有查询显式带 `tenant_id` tag；Caffeine 缓存键包含租户；Redis 登录/刷新值包含租户。
+- 用户名与产品 key 使用 `(tenant_id, code) WHERE deleted=0` 部分唯一索引，跨租户可重复。
+- 设备/主机 ID 仍全局唯一（MQTT clientId 直接作为主键使用），跨租户按 `tenant_id` 校验，不依赖 ID 碰撞。
+- 平台管理员只是 `default` 租户内带 `ROLE_PLATFORM_ADMIN` 的用户，业务 API 仍只看 `default` 数据；
+  租户管理接口仅允许查看租户元数据与聚合计数。
 
 ## 6. 接口设计
 
@@ -660,9 +690,13 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 
 | 模块 | 方法与路径 | 说明 |
 |---|---|---|
-| 认证 | `POST /api/auth/login` | 登录，返回 access + refresh token |
-| 认证 | `POST /api/auth/refresh` | 刷新令牌 |
-| 实时 | `GET /api/mqtt/credentials` | 浏览器短时 MQTT 凭证（WebSocket 直连 EMQX） |
+| 认证 | `POST /api/auth/login` | `{tenantCode, username, password}`；返回 access + refresh token 与 tenant/platform 信息 |
+| 认证 | `POST /api/auth/refresh` | 刷新令牌；租户取自 refresh token 的 `tenant` 声明 |
+| 认证 | `GET /api/auth/me` | 当前用户、所属租户、`platformAdmin` 标记 |
+| 租户 | `GET /api/tenants` | 平台管理员查看租户列表与用户/项目/设备计数 |
+| 租户 | `POST /api/tenants` | 平台管理员开通租户；自动创建默认项目、默认空间、租户管理员 |
+| 租户 | `PUT /api/tenants/{id}` | 修改名称/套餐/状态；禁用后立即拒绝登录与既有令牌 |
+| 实时 | `GET /api/mqtt/credentials` | 浏览器短时 MQTT 凭证（含 tenantId，WebSocket 直连 EMQX） |
 | 产品 | `GET/POST /api/products` | 产品列表 / 创建 |
 | 产品 | `GET/PUT/DELETE /api/products/{id}` | 产品详情 / 修改 / 删除 |
 | 物模型 | `GET/PUT /api/products/{id}/thing-model` | 查询 / 保存物模型定义 |

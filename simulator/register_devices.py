@@ -3,19 +3,23 @@
 自动完成：查找/创建产品 → 应用演示物模型 → 批量注册设备 → 输出凭证 JSON（含一次性密钥）。
 
 用法:
-    python register_devices.py --count 5
+    python register_devices.py --tenant default --password '<admin password>' --count 5
     python register_devices.py --product-name 我的产品 --count 10 --out creds.json
     python register_devices.py --model-only        # 只更新演示物模型
 
-后端需要先启动（默认 http://localhost:8081）。生成的凭证文件请勿提交到 git。
+密码优先取环境变量 COHERER_ADMIN_PASSWORD；后端需要先启动（默认 http://localhost:8081）。
+生成的凭证文件请勿提交到 git。
 """
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+
+TOKEN = None
 
 # 模拟器上报的属性集合，必须与物模型一致，否则遥测会被校验丢弃
 DEMO_MODEL_ITEMS = [
@@ -51,8 +55,10 @@ DEMO_MODEL_ITEMS = [
 
 def call(base, method, path, body=None):
     data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        base + path, data=data, headers={"Content-Type": "application/json"}, method=method)
+    headers = {"Content-Type": "application/json"}
+    if TOKEN:
+        headers["Authorization"] = f"Bearer {TOKEN}"
+    req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req) as r:
             return json.load(r)
@@ -65,8 +71,13 @@ def call(base, method, path, body=None):
 
 
 def main():
+    global TOKEN
     parser = argparse.ArgumentParser(description="注册演示设备并生成凭证文件")
     parser.add_argument("--base", default="http://localhost:8081", help="后端地址")
+    parser.add_argument("--tenant", default="default", help="租户代码（默认 default）")
+    parser.add_argument("--username", default="admin", help="登录用户名（默认 admin）")
+    parser.add_argument("--password", default=os.environ.get("COHERER_ADMIN_PASSWORD"),
+                        help="登录密码；也可用环境变量 COHERER_ADMIN_PASSWORD")
     parser.add_argument("--product-name", default="演示产品", help="产品名称（不存在则创建）")
     parser.add_argument("--count", type=int, default=5, help="注册设备数量")
     parser.add_argument("--prefix", default="demo", help="设备名前缀")
@@ -74,7 +85,21 @@ def main():
     parser.add_argument("--model-only", action="store_true", help="只更新演示物模型，不注册设备")
     args = parser.parse_args()
 
+    if not args.password:
+        print("缺少登录密码：请传 --password 或设置 COHERER_ADMIN_PASSWORD",
+              file=sys.stderr)
+        raise SystemExit(1)
+
     base = args.base.rstrip("/")
+
+    # 多租户登录：租户代码决定后续 API 的数据边界
+    login = call(base, "POST", "/api/auth/login", {
+        "tenantCode": args.tenant,
+        "username": args.username,
+        "password": args.password,
+    })
+    TOKEN = login["data"]["accessToken"]
+    print(f"已登录租户 {args.tenant}（{args.username}）")
 
     # 查找或创建产品
     keyword = urllib.parse.quote(args.product_name)
@@ -104,7 +129,8 @@ def main():
         "namePrefix": args.prefix,
     })["data"]
 
-    creds = [{"deviceId": d["deviceId"], "secret": d["deviceSecret"]} for d in devices]
+    creds = [{"tenant": args.tenant, "deviceId": d["deviceId"],
+              "secret": d["deviceSecret"]} for d in devices]
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(creds, f, ensure_ascii=False, indent=2)
 

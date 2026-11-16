@@ -7,6 +7,12 @@ public class UserInfoVO {
 
     private Long id;
 
+    private String tenantId;
+
+    private String tenantName;
+
+    private Boolean platformAdmin;
+
     private String username;
 
     private String nickname;

@@ -108,3 +108,18 @@ export function subscribeRealtime(filter: string, handler: Handler): () => void 
     }
   }
 }
+
+/** 登出/切换租户：断开旧租户连接并清空订阅，避免凭证与主题串租户。 */
+export function disconnectRealtime() {
+  window.clearTimeout(retryTimer)
+  connecting = false
+  handlers.clear()
+  mqttConnected.value = false
+  mqttError.value = ''
+  const current = client
+  client = null
+  if (current) {
+    current.removeAllListeners()
+    current.end(true)
+  }
+}

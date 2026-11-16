@@ -73,7 +73,8 @@ class ProjectIT extends AbstractIntegrationTest {
 
         // 用管理员 token 创建用户后，直接用登录接口拿受限用户 token
         ResponseEntity<JsonNode> login = rest.postForEntity("/api/auth/login",
-                java.util.Map.of("username", username, "password", "Viewer@123"), JsonNode.class);
+                java.util.Map.of("tenantCode", "default", "username", username,
+                        "password", "Viewer@123"), JsonNode.class);
         String viewerToken = login.getBody().path("data").path("accessToken").asText();
         assertThat(viewerToken).isNotBlank();
 

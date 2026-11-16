@@ -43,9 +43,14 @@ public class DataScopeService {
     }
 
     public DataScope of(String username) {
-        SysUser user = userCache.get(username, name -> Optional.ofNullable(
+        String tenantId = TenantContext.get();
+        if (tenantId == null) {
+            return DataScope.of(null, List.of());
+        }
+        String key = tenantId + ":" + username;
+        SysUser user = userCache.get(key, ignored -> Optional.ofNullable(
                         userMapper.selectOne(Wrappers.<SysUser>lambdaQuery()
-                                .eq(SysUser::getUsername, name)
+                                .eq(SysUser::getUsername, username)
                                 .last("limit 1"))))
                 .orElse(null);
         // 用户不存在或已禁用：返回空范围，后续查询自然为空
@@ -97,6 +102,11 @@ public class DataScopeService {
     }
 
     public void invalidate(String username) {
-        userCache.invalidate(username);
+        String tenantId = TenantContext.get();
+        if (tenantId != null) {
+            userCache.invalidate(tenantId + ":" + username);
+        } else {
+            userCache.invalidateAll();
+        }
     }
 }

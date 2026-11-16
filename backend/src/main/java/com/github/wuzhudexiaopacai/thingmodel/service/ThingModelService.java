@@ -65,6 +65,7 @@ public class ThingModelService extends ServiceImpl<ThingModelMapper, ThingModel>
         List<ThingModel> entities = new ArrayList<>(request.getItems().size());
         for (ThingModelSaveRequest.Item item : request.getItems()) {
             ThingModel model = new ThingModel();
+            model.setTenantId(com.github.wuzhudexiaopacai.security.TenantContext.requireTenant());
             model.setProductId(productId);
             model.setType(item.getType());
             model.setIdentifier(item.getIdentifier());

@@ -212,10 +212,13 @@ onMounted(async () => {
       loadServices(),
       loadEvents()
     ])
-    unsubscribeRealtime = subscribeRealtime(
-      `default/${device.value.deviceId}/thing/property/report`,
-      (_topic, payload) => handleRealtime(payload)
-    )
+    const tenantId = auth.user?.tenantId
+    if (tenantId) {
+      unsubscribeRealtime = subscribeRealtime(
+        `${tenantId}/${device.value.deviceId}/thing/property/report`,
+        (_topic, payload) => handleRealtime(payload)
+      )
+    }
   }
   loading.value = false
   // 实时数据走 MQTT，轮询仅作为兜底（30 秒）

@@ -37,7 +37,7 @@ native_path() {
 
 echo "[1/7] 登录 ${BASE_URL}"
 LOGIN="$(curl -sk "$BASE_URL/api/auth/login" -H 'Content-Type: application/json' \
-  -d "{\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}")"
+  -d "{\"tenantCode\":\"default\",\"username\":\"admin\",\"password\":\"$ADMIN_PASSWORD\"}")"
 TOKEN="$(printf '%s' "$LOGIN" | json_get 'd["data"]["accessToken"]')"
 [ -n "$TOKEN" ] || { echo "登录失败: $LOGIN"; exit 1; }
 AUTH="Authorization: Bearer $TOKEN"

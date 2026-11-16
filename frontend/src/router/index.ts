@@ -12,6 +12,7 @@ const OtaView = () => import('../views/OtaView.vue')
 const AlarmsView = () => import('../views/AlarmsView.vue')
 const SpacesView = () => import('../views/SpacesView.vue')
 const ProjectsView = () => import('../views/ProjectsView.vue')
+const TenantsView = () => import('../views/TenantsView.vue')
 const UsersView = () => import('../views/UsersView.vue')
 const AuditLogsView = () => import('../views/AuditLogsView.vue')
 
@@ -77,6 +78,16 @@ const router = createRouter({
           meta: { title: '项目管理', subtitle: '项目边界 · 空间/主机/设备归属', adminOnly: true }
         },
         {
+          path: 'tenants',
+          name: 'tenants',
+          component: TenantsView,
+          meta: {
+            title: '租户管理',
+            subtitle: '租户开通 · 套餐与状态 · 默认项目/空间/管理员',
+            platformAdminOnly: true
+          }
+        },
+        {
           path: 'spaces',
           name: 'spaces',
           component: SpacesView,
@@ -109,9 +120,10 @@ router.beforeEach((to) => {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   // 管理页仅 ADMIN 可进；服务端仍会二次校验
-  if (to.meta.adminOnly) {
+  if (to.meta.adminOnly || to.meta.platformAdminOnly) {
     try {
       const user = JSON.parse(localStorage.getItem('coherer.user') || '{}')
+      if (to.meta.platformAdminOnly && user.platformAdmin !== true) return '/'
       if (user.role !== 'ADMIN') return '/'
     } catch {
       return '/'

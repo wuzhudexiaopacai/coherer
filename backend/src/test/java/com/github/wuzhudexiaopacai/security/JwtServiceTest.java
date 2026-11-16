@@ -21,6 +21,8 @@ class JwtServiceTest {
         jwtService = new JwtService(SECRET, 7200, 604800);
         user = new SysUser();
         user.setId(1L);
+        user.setTenantId("default");
+        user.setPlatformAdmin(1);
         user.setUsername("admin");
         user.setRole("ADMIN");
     }
@@ -31,6 +33,8 @@ class JwtServiceTest {
         Claims claims = jwtService.parseAccess(token);
 
         assertEquals("admin", claims.getSubject());
+        assertEquals("default", claims.get("tenant"));
+        assertEquals(Boolean.TRUE, claims.get("platform"));
         assertEquals("ADMIN", claims.get("role"));
         assertEquals("access", claims.get("type"));
         assertNotNull(claims.getExpiration());

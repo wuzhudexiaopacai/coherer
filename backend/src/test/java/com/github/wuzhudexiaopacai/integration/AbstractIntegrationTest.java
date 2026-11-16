@@ -10,6 +10,7 @@ import com.github.wuzhudexiaopacai.ota.service.FirmwareService;
 import com.github.wuzhudexiaopacai.ota.service.OtaProgressService;
 import com.github.wuzhudexiaopacai.ota.service.OtaRolloutService;
 import com.github.wuzhudexiaopacai.ota.service.OtaService;
+import com.github.wuzhudexiaopacai.security.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -127,7 +129,8 @@ public abstract class AbstractIntegrationTest {
             return token;
         }
         Map<?, ?> response = rest.postForObject("/api/auth/login",
-                Map.of("username", "admin", "password", ADMIN_PASSWORD), Map.class);
+                Map.of("tenantCode", "default", "username", "admin", "password", ADMIN_PASSWORD),
+                Map.class);
         Map<?, ?> data = (Map<?, ?>) response.get("data");
         token = String.valueOf(data.get("accessToken"));
         assertThat(token).isNotBlank();
@@ -237,10 +240,20 @@ public abstract class AbstractIntegrationTest {
             if ("FAILED".equals(status)) {
                 payload.put("error", "integration test failure");
             }
-            progressService.onProgress(deviceId, objectMapper.writeValueAsBytes(payload));
+            byte[] bytes = objectMapper.writeValueAsBytes(payload);
+            // 模拟 MQTT 网关：按主题中的租户建立上下文后再处理进度
+            asDefault(() -> {
+                progressService.onProgress(deviceId, bytes);
+                return null;
+            });
         } catch (Exception e) {
             throw new IllegalStateException("上报测试进度失败", e);
         }
+    }
+
+    /** 直接调用受租户拦截器约束的 Service/Mapper 时，显式模拟默认租户请求上下文。 */
+    protected <T> T asDefault(Supplier<T> action) {
+        return TenantContext.callAs("default", action);
     }
 
     private static Path createTempDir() {

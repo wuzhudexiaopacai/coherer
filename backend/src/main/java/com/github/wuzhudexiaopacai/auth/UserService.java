@@ -55,7 +55,8 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         validateSpace(request.getSpaceId());
 
         SysUser user = new SysUser();
-        user.setTenantId("default");
+        user.setTenantId(com.github.wuzhudexiaopacai.security.TenantContext.requireTenant());
+        user.setPlatformAdmin(0);
         user.setUsername(request.getUsername());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setNickname(request.getNickname());
@@ -107,7 +108,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         }
         updateById(user);
         if (revoke) {
-            sessionValidator.invalidate(user.getUsername());
+            sessionValidator.invalidate(user.getTenantId(), user.getUsername());
         }
         return toVO(user);
     }
@@ -119,7 +120,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         // 改密后所有旧会话失效
         user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
         updateById(user);
-        sessionValidator.invalidate(user.getUsername());
+        sessionValidator.invalidate(user.getTenantId(), user.getUsername());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -161,6 +162,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
     private UserVO toVO(SysUser user) {
         UserVO vo = new UserVO();
         BeanUtils.copyProperties(user, vo);
+        vo.setPlatformAdmin(user.getPlatformAdmin() != null && user.getPlatformAdmin() == 1);
         return vo;
     }
 }

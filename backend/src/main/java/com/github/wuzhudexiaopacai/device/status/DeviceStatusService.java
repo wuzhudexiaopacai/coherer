@@ -118,6 +118,10 @@ public class DeviceStatusService {
     @Scheduled(fixedDelayString = "${coherer.device.online-sweep-interval-ms:60000}",
             initialDelayString = "${coherer.device.online-sweep-initial-delay-ms:30000}")
     public void sweepStaleOnline() {
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(this::doSweepStaleOnline);
+    }
+
+    private void doSweepStaleOnline() {
         List<Device> onlineDevices;
         try {
             onlineDevices = deviceMapper.selectList(Wrappers.<Device>lambdaQuery()

@@ -263,6 +263,10 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
     /** 长时间无进度的任务：可重试则回到 PENDING，否则终态 TIMEOUT。 */
     @Scheduled(fixedDelayString = "${coherer.ota.timeout-sweep-interval-ms:30000}")
     public void sweepTimeouts() {
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(this::doSweepTimeouts);
+    }
+
+    private void doSweepTimeouts() {
         OffsetDateTime deadline = OffsetDateTime.now().minusSeconds(taskTimeoutSeconds);
         try {
             List<OtaTask> expired = new java.util.ArrayList<>();
@@ -294,7 +298,11 @@ public class OtaService extends ServiceImpl<OtaTaskMapper, OtaTask> {
     @Scheduled(fixedDelayString = "${coherer.ota.retry-sweep-interval-ms:10000}",
             initialDelayString = "${coherer.ota.retry-sweep-initial-delay-ms:15000}")
     public void retryDueTasks() {
-        OffsetDateTime now = OffsetDateTime.now();
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(
+                () -> doRetryDueTasks(OffsetDateTime.now()));
+    }
+
+    private void doRetryDueTasks(OffsetDateTime now) {
         try {
             List<OtaTask> due = baseMapper.selectList(Wrappers.<OtaTask>lambdaQuery()
                     .eq(OtaTask::getStatus, "PENDING")

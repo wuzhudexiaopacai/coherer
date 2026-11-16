@@ -128,15 +128,21 @@ public class FirmwareService extends ServiceImpl<FirmwareMapper, Firmware> {
         if (!downloadSigner.verify(firmwareId, deviceId, expires, signature)) {
             throw new BizException(403, "下载签名无效或已过期");
         }
-        Firmware firmware = require(firmwareId);
-        Device device = deviceLookupService.getByDeviceId(deviceId);
-        if (device == null || !firmware.getProductId().equals(device.getProductId())) {
-            throw new BizException(403, "设备与固件产品不匹配");
-        }
-        if ("DISABLED".equals(device.getStatus())) {
-            throw new BizException(403, "设备已禁用");
-        }
-        return firmware;
+        // 下载端点无用户 JWT，也没有租户上下文；设备/固件必须同租户
+        return com.github.wuzhudexiaopacai.security.TenantContext.callBypass(() -> {
+            Firmware firmware = require(firmwareId);
+            Device device = deviceLookupService.getByDeviceId(deviceId);
+            if (device == null || !firmware.getProductId().equals(device.getProductId())) {
+                throw new BizException(403, "设备与固件产品不匹配");
+            }
+            if (!java.util.Objects.equals(firmware.getTenantId(), device.getTenantId())) {
+                throw new BizException(403, "设备与固件租户不匹配");
+            }
+            if ("DISABLED".equals(device.getStatus())) {
+                throw new BizException(403, "设备已禁用");
+            }
+            return firmware;
+        });
     }
 
     public InputStream openStream(Firmware firmware, long offset, long length) {

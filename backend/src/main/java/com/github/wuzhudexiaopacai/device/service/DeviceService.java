@@ -34,6 +34,7 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
     private final ShadowService shadowService;
     private final SpaceService spaceService;
     private final DeviceLookupService deviceLookupService;
+    private final com.github.wuzhudexiaopacai.tenant.service.TenantLookupService tenantLookupService;
 
     @Transactional(rollbackFor = Exception.class)
     public List<DeviceRegisterResult> register(DeviceRegisterRequest request, DataScope scope) {
@@ -50,8 +51,10 @@ public class DeviceService extends ServiceImpl<DeviceMapper, Device> {
                 ? request.getNamePrefix()
                 : product.getProductKey();
         // 受限用户未指定空间时落到自己的根空间；指定越界空间直接 403
+        String tenantId = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
         Long spaceId = request.getSpaceId() == null
-                ? (scope.unrestricted() ? SpaceService.DEFAULT_SPACE_ID : scope.rootSpaceId())
+                ? (scope.unrestricted()
+                        ? tenantLookupService.defaultSpaceId(tenantId) : scope.rootSpaceId())
                 : request.getSpaceId();
         if (spaceId == null) {
             throw new BizException(403, "当前用户未分配数据空间，无法注册设备");

@@ -512,7 +512,40 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 `coherer.spaceId` 分别持久化并校验失效值。
 **验证**：前端 build；手工切换项目后设备/主机/看板/告警/OTA 均刷新为该项目数据。
 
-## 14. 提交索引
+## 14. 多租户
+
+### 14.1 先建租户上下文，再做会话校验
+
+**现象**：登录接口返回成功，但任意带 JWT 的请求都是 401；日志无异常（过滤器静默清理）。
+**原因**：`JwtAuthFilter` 先调用 `TokenSessionValidator` 查 `sys_user`，此时还没 `TenantContext.set`；
+租户拦截器 fail-closed 抛“缺少租户上下文”，异常被过滤器捕获后清空认证。
+**修复**：解析 JWT 并校验租户 ACTIVE 后立即 `TenantContext.set(tenantId)`，再校验用户状态与 token_version；
+任何失败路径都清理上下文。
+**验证**：`TenantIT` 平台管理员登录后访问 `/api/tenants` 成功；禁用租户后既有 token 返回 401。
+
+### 14.2 定时任务与启动任务必须显式 bypass
+
+**现象**：启动后日志持续出现“命令超时巡检失败: 缺少租户上下文”；OTA 超时/重试巡检也不工作。
+**原因**：调度线程没有请求或 MQTT 主题，天然没有租户；拦截器 fail-closed 会拒绝所有查询/更新。
+**修复**：所有系统任务在入口 `TenantContext.runBypass`：命令超时、设备/主机在线巡检、OTA 超时/重试、
+灰度推进、告警预热、TDengine 初始化；租户开通在插入 tenant 后 bypass 创建默认资源。
+**验证**：集成测试启动日志无租户上下文异常；`TenantIT` 与 OTA IT 同时通过。
+
+### 14.3 唯一索引必须改为租户内唯一
+
+**做法**：V24 删除 `uk_sys_user_username`、`uk_product_key`，改为
+`(tenant_id, username) WHERE deleted=0` 与 `(tenant_id, product_key) WHERE deleted=0`。
+**验证**：`TenantIT` 在两个租户中创建同名 `admin` 均成功；同一租户内重复仍返回 409/登录失败。
+
+### 14.4 前端登出必须清空租户内缓存与实时连接
+
+**风险**：只清 token 时，项目/空间/产品 Pinia 缓存和旧 MQTT 连接仍可能展示上一个租户的数据。
+**修复**：`auth.logout()` 同时 reset 三个 store、删除 `coherer.projectId/spaceId`，并调用
+`disconnectRealtime()` 结束连接、清空订阅；登录后 `AppLayout` 按新用户 `tenantId` 重新订阅
+`{tenant}/+/thing/property/report`。
+**验证**：前端 Vitest 断言登出清理；build 通过；手工 A 租户登出后登录 B，项目/设备列表不串数据。
+
+## 15. 提交索引
 
 | 提交 | 内容 |
 |---|---|
@@ -540,7 +573,7 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 | `f1f42a7` | TDengine space_id tag/保留期 |
 | `042c79d` | 设备事件上报 |
 
-## 15. 仍建议优先处理
+## 16. 仍建议优先处理
 
 1. ~~写入前校验遥测 payload 长度，避免 TDengine 截断~~（已完成）
 2. ~~命令 identifier 按物模型 SERVICE 校验，并加幂等键/发送限流~~（已完成）

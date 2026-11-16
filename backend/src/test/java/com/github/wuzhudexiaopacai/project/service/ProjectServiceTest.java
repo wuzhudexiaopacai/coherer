@@ -24,6 +24,9 @@ import java.util.Set;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import com.github.wuzhudexiaopacai.security.TenantContext;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class ProjectServiceTest {
@@ -44,8 +47,16 @@ class ProjectServiceTest {
         spaceService = mock(SpaceService.class);
         hostMapper = mock(IotHostMapper.class);
         deviceMapper = mock(DeviceMapper.class);
-        service = new ProjectService(spaceService, hostMapper, deviceMapper);
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        when(tenantLookup.defaultProjectId("default")).thenReturn(1L);
+        TenantContext.set("default");
+        service = new ProjectService(spaceService, hostMapper, deviceMapper, tenantLookup);
         ReflectionTestUtils.setField(service, "baseMapper", projectMapper);
+    }
+
+    @AfterEach
+    void clearTenant() {
+        TenantContext.clear();
     }
 
     @Test

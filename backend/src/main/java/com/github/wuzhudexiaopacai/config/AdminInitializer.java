@@ -3,6 +3,7 @@ package com.github.wuzhudexiaopacai.config;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
+import com.github.wuzhudexiaopacai.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,19 +28,24 @@ public class AdminInitializer implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        Long count = userMapper.selectCount(
-                Wrappers.<SysUser>lambdaQuery().eq(SysUser::getUsername, "admin"));
-        if (count != null && count > 0) {
-            return;
-        }
-        SysUser admin = new SysUser();
-        admin.setTenantId("default");
-        admin.setUsername("admin");
-        admin.setNickname("平台管理员");
-        admin.setPasswordHash(passwordEncoder.encode(adminPassword));
-        admin.setRole("ADMIN");
-        admin.setStatus("ACTIVE");
-        userMapper.insert(admin);
-        log.warn("已初始化管理员 admin，口令来自 COHERER_ADMIN_PASSWORD，请尽快修改");
+        TenantContext.runBypass(() -> {
+            Long count = userMapper.selectCount(Wrappers.<SysUser>lambdaQuery()
+                    .eq(SysUser::getTenantId, "default")
+                    .eq(SysUser::getUsername, "admin"));
+            if (count != null && count > 0) {
+                return;
+            }
+            SysUser admin = new SysUser();
+            admin.setTenantId("default");
+            admin.setUsername("admin");
+            admin.setNickname("平台管理员");
+            admin.setPasswordHash(passwordEncoder.encode(adminPassword));
+            admin.setRole("ADMIN");
+            admin.setPlatformAdmin(1);
+            admin.setStatus("ACTIVE");
+            admin.setTokenVersion(0);
+            userMapper.insert(admin);
+            log.warn("已初始化平台管理员 admin（租户 default），口令来自 COHERER_ADMIN_PASSWORD");
+        });
     }
 }

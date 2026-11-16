@@ -2,6 +2,7 @@ package com.github.wuzhudexiaopacai.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.wuzhudexiaopacai.common.ApiResponse;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,15 +25,18 @@ public class SecurityConfig {
 
     private final JwtService jwtService;
     private final TokenSessionValidator sessionValidator;
+    private final TenantLookupService tenantLookupService;
     private final ObjectMapper objectMapper;
     private final String internalToken;
 
     public SecurityConfig(JwtService jwtService,
                           TokenSessionValidator sessionValidator,
+                          TenantLookupService tenantLookupService,
                           ObjectMapper objectMapper,
                           @Value("${coherer.security.internal-token}") String internalToken) {
         this.jwtService = jwtService;
         this.sessionValidator = sessionValidator;
+        this.tenantLookupService = tenantLookupService;
         this.objectMapper = objectMapper;
         this.internalToken = internalToken;
     }
@@ -60,6 +64,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/audit-logs/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
+                        // 租户管理仅平台管理员
+                        .requestMatchers("/api/tenants/**").hasRole("PLATFORM_ADMIN")
                         // 项目是平台级边界，写操作仅 ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/projects/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/projects/**").hasRole("ADMIN")
@@ -74,7 +80,8 @@ public class SecurityConfig {
                                 writeJson(response, 401, "未登录或登录已过期"))
                         .accessDeniedHandler((request, response, exception) ->
                                 writeJson(response, 403, "无权限执行该操作")))
-                .addFilterBefore(new JwtAuthFilter(jwtService, sessionValidator),
+                .addFilterBefore(new JwtAuthFilter(jwtService, sessionValidator,
+                                tenantLookupService),
                         UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new InternalTokenFilter(internalToken),
                         UsernamePasswordAuthenticationFilter.class);

@@ -24,7 +24,7 @@ class FirmwareDownloadIT extends AbstractIntegrationTest {
         new Random(42).nextBytes(content);
         String firmwareId = uploadFirmware(productId, "3.0.0", content);
 
-        Firmware firmware = firmwareService.require(Long.parseLong(firmwareId));
+        Firmware firmware = asDefault(() -> firmwareService.require(Long.parseLong(firmwareId)));
         URI uri = URI.create(firmwareService.downloadUrl(firmware, deviceId));
         String path = uri.getRawPath() + "?" + uri.getRawQuery();
 

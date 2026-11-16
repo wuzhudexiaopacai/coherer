@@ -104,8 +104,9 @@ onMounted(async () => {
   await Promise.all([loadOverview(), loadTrend(), loadRecent()])
   loading.value = false
   // 空间受限用户不使用全平台通配符订阅，实时数据由轮询兜底
-  if (auth.user?.spaceId == null) {
-    unsubscribeRealtime = subscribeRealtime('default/+/thing/property/report', (topic, payload) => {
+  const tenantId = auth.user?.tenantId
+  if (tenantId && auth.user?.spaceId == null) {
+    unsubscribeRealtime = subscribeRealtime(`${tenantId}/+/thing/property/report`, (topic, payload) => {
     try {
       const data = JSON.parse(payload) as {
         ts?: number

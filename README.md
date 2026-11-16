@@ -71,12 +71,12 @@ cd ../backend && mvn spring-boot:run
 # 健康检查: http://localhost:8081/actuator/health（匿名可访问）
 # 指标端点: http://localhost:8081/actuator/prometheus（需 X-Internal-Token）
 
-# 3. 注册演示设备并生成凭证（EMQX 已开启签名认证，匿名连接会被拒绝）
+# 3. 注册演示设备并生成凭证（需带租户代码与管理员密码；密码也可用 COHERER_ADMIN_PASSWORD）
 cd ../simulator
 pip install -r requirements.txt
-python register_devices.py --count 5
+python register_devices.py --tenant default --password '<COHERER_ADMIN_PASSWORD>' --count 5
 
-# 4. 启动设备模拟器（TLS + HMAC 签名认证）
+# 4. 启动设备模拟器（TLS + HMAC 签名认证；租户从凭证文件读取）
 python simulator.py --credentials creds.json --tls
 #    验证 OTA 失败分支：追加 --ota-fail，设备会下载并校验固件后回报安装失败
 
@@ -115,8 +115,9 @@ python simulator.py --credentials creds.json --tls
 cd frontend
 npm install
 npm run dev
-# 打开 http://localhost:5180 ，使用 admin / Admin@123 登录
+# 打开 http://localhost:5180 ，使用租户 default + admin / Admin@123 登录
 # （初始口令来自 backend/.env 的 COHERER_ADMIN_PASSWORD）
+# 平台管理员可在「租户管理」开通新租户；新租户用 tenantCode + 租户管理员登录
 ```
 
 > ⚠️ EMQX 已开启 **HTTP 签名认证 + 主题级 ACL**：设备只能访问自身 tenant/deviceId 主题；浏览器实时订阅使用后端签发的短时凭证；Dashboard 的 WebSocket 测试客户端因不具备设备签名会被拒绝。
@@ -149,7 +150,7 @@ curl -H "Authorization: Bearer <accessToken>" \
 ## 测试与接口文档
 
 ```bash
-# 单元测试（272 个）
+# 单元测试（322 个）
 cd backend && mvn test
 
 # 一键单元 + 集成测试 + 覆盖率门禁
@@ -164,8 +165,8 @@ cd backend && mvn test
 open http://localhost:8081/swagger-ui.html
 ```
 
-CI 在 `mvn clean verify` 中执行：单元测试 + 5 个真实 PG/Redis 集成测试 + JaCoCo
-行/分支覆盖率门禁（当前基线 60%/45%，实测 62.6%/49.7%，后续按 ratchet 逐步提高到 80%/70%）。
+CI 在 `mvn clean verify` 中执行：单元测试 + 9 个真实 PG/Redis 集成测试 + JaCoCo
+行/分支覆盖率门禁（当前基线 60%/45%，实测 67.7%/53.5%，后续按 ratchet 逐步提高到 80%/70%）。
 
 ## TLS 与备份恢复
 
@@ -201,9 +202,9 @@ coherer/
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | M1 | 垂直跑通：设备注册 → 模拟器上报 → 认证 → 入库 | ✅ 已完成 |
-| M2 | 物模型、设备影子、在线状态（TTL 兜底）、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL、项目层（项目 → 空间 → 主机/设备）、空间树、设备启停/删除/密钥轮换、用户管理、命令下发、事件上报、边缘主机/网关（命令转发 + 子设备数据代理） | ✅ 已完成 |
+| M2 | 物模型、设备影子、在线状态（TTL 兜底）、TDengine、前端看板、告警 v1、mqtt.js 实时推送、设备 ACL、项目层（项目 → 空间 → 主机/设备）、空间树、设备启停/删除/密钥轮换、用户管理、命令下发、事件上报、边缘主机/网关（命令转发 + 子设备数据代理）、**多租户（租户上下文 + 数据隔离 + 租户管理）** | ✅ 已完成 |
 | M3 | 微服务化（Nacos+Gateway）、Kafka 削峰、时间水位 | 🟡 批量写入/幂等/共享订阅/命令下发/事件上报已完成，Kafka 与拆服务待做 |
-| M4 | OTA、场景联动、通知渠道、mTLS 加固、多租户 | 🟡 **OTA 全链路已完成**（设备/空间/全量目标、分批、暂停/恢复/取消、失败率熔断、退避重试、from_version 回退、本地/S3 存储、签名下载、Range 断点续传、进度/超时）；场景联动、通知渠道、mTLS、多租户待做 |
+| M4 | OTA、场景联动、通知渠道、mTLS 加固 | 🟡 **OTA 全链路已完成**（设备/空间/全量目标、分批、暂停/恢复/取消、失败率熔断、退避重试、from_version 回退、本地/S3 存储、签名下载、Range 断点续传、进度/超时）；场景联动、通知渠道、mTLS 待做 |
 | M5 | K8s+Helm、HA、10 万连接压测报告 | 🟡 Prometheus/Grafana/Alertmanager/Zipkin 已完成，HA 与压测待做 |
 
 ## 文档
@@ -214,4 +215,4 @@ coherer/
 | [docs/design.md](docs/design.md) | 设计图：架构图、时序图、状态机、ER 图、Redis 键设计、接口设计、部署图 |
 | [docs/architecture.md](docs/architecture.md) | 技术方案：选型理由、MQTT 协议设计、里程碑、简历卖点与面试预演 |
 | [docs/enterprise-gap-analysis.md](docs/enterprise-gap-analysis.md) | 企业级差距分析：安全/可靠性/测试/运维评分、P0 阻断项、整改路线图与验收清单 |
-| [docs/pitfalls.md](docs/pitfalls.md) | 踩坑记录：构建、MyBatis-Plus、MQTT、TDengine、认证、可观测性、命令下发与 OTA |
+| [docs/pitfalls.md](docs/pitfalls.md) | 踩坑记录：构建、MyBatis-Plus、MQTT、TDengine、认证、可观测性、命令下发、OTA、项目层与多租户 |

@@ -16,6 +16,9 @@ import type {
   Shadow,
   SpaceNode,
   Telemetry,
+  Tenant,
+  TenantCreateBody,
+  TenantUpdateBody,
   ThingModel,
   TrendPoint,
   UserInfo,
@@ -33,7 +36,7 @@ import type {
 } from './types'
 
 export const api = {
-  login: (body: { username: string; password: string }) =>
+  login: (body: { tenantCode: string; username: string; password: string }) =>
     request<AuthResponse>({ url: '/auth/login', method: 'post', data: body }),
 
   refresh: (body: { refreshToken: string }) =>
@@ -42,6 +45,14 @@ export const api = {
   me: () => request<UserInfo>({ url: '/auth/me', method: 'get' }),
 
   logout: () => request<void>({ url: '/auth/logout', method: 'post' }),
+
+  listTenants: () => request<Tenant[]>({ url: '/tenants', method: 'get' }),
+
+  createTenant: (body: TenantCreateBody) =>
+    request<Tenant>({ url: '/tenants', method: 'post', data: body }),
+
+  updateTenant: (id: string, body: TenantUpdateBody) =>
+    request<Tenant>({ url: `/tenants/${id}`, method: 'put', data: body }),
 
   overview: (spaceId?: string | null, projectId?: string | null) =>
     request<Overview>({

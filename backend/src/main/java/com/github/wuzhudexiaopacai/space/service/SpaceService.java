@@ -11,8 +11,9 @@ import com.github.wuzhudexiaopacai.host.entity.IotHost;
 import com.github.wuzhudexiaopacai.host.mapper.IotHostMapper;
 import com.github.wuzhudexiaopacai.project.entity.Project;
 import com.github.wuzhudexiaopacai.project.mapper.ProjectMapper;
-import com.github.wuzhudexiaopacai.project.service.ProjectService;
 import com.github.wuzhudexiaopacai.security.DataScope;
+import com.github.wuzhudexiaopacai.security.TenantContext;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import com.github.wuzhudexiaopacai.space.dto.SpaceRequest;
 import com.github.wuzhudexiaopacai.space.dto.SpaceUpdateRequest;
 import com.github.wuzhudexiaopacai.space.entity.Space;
@@ -37,36 +38,44 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
 
-    public static final long DEFAULT_SPACE_ID = 1L;
-
     private final DeviceMapper deviceMapper;
     private final IotHostMapper hostMapper;
     private final ProjectMapper projectMapper;
+    private final TenantLookupService tenantLookupService;
 
-    /** 空间树变化不频繁：缓存整表与后代集合，写操作后主动失效。 */
+    /** 空间树变化不频繁：缓存按租户隔离，写操作后只失效当前租户。 */
     private final Cache<String, List<Space>> allSpacesCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(60))
-            .maximumSize(1)
-            .build();
-    private final Cache<Long, List<Long>> descendantCache = Caffeine.newBuilder()
-            .expireAfterWrite(Duration.ofSeconds(60))
             .maximumSize(2_000)
             .build();
-    private final Cache<Long, List<Long>> projectSpaceCache = Caffeine.newBuilder()
+    private final Cache<String, List<Long>> descendantCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(60))
-            .maximumSize(2_000)
+            .maximumSize(20_000)
+            .build();
+    private final Cache<String, List<Long>> projectSpaceCache = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofSeconds(60))
+            .maximumSize(20_000)
             .build();
 
     private List<Space> allSpaces() {
-        return allSpacesCache.get("all", ignored -> list(Wrappers.<Space>lambdaQuery()
+        String tenant = TenantContext.requireTenant();
+        return allSpacesCache.get(tenant, ignored -> list(Wrappers.<Space>lambdaQuery()
                 .orderByAsc(Space::getSort)
                 .orderByAsc(Space::getId)));
     }
 
     private void invalidateSpaceCaches() {
-        allSpacesCache.invalidateAll();
-        descendantCache.invalidateAll();
-        projectSpaceCache.invalidateAll();
+        String tenant = TenantContext.get();
+        if (tenant == null) {
+            allSpacesCache.invalidateAll();
+            descendantCache.invalidateAll();
+            projectSpaceCache.invalidateAll();
+            return;
+        }
+        allSpacesCache.invalidate(tenant);
+        String prefix = tenant + ":";
+        descendantCache.asMap().keySet().removeIf(key -> key.startsWith(prefix));
+        projectSpaceCache.asMap().keySet().removeIf(key -> key.startsWith(prefix));
     }
 
     public List<SpaceNodeVO> tree() {
@@ -105,7 +114,8 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             projectId = parent.getProjectId();
         } else {
             projectId = request.getProjectId() == null
-                    ? ProjectService.DEFAULT_PROJECT_ID : request.getProjectId();
+                    ? tenantLookupService.defaultProjectId(TenantContext.requireTenant())
+                    : request.getProjectId();
         }
         Project project = projectMapper.selectById(projectId);
         if (project == null) {
@@ -115,7 +125,7 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
             throw new BizException(409, "项目已禁用，不能新建空间");
         }
         Space space = new Space();
-        space.setTenantId("default");
+        space.setTenantId(TenantContext.requireTenant());
         space.setProjectId(projectId);
         space.setParentId(request.getParentId());
         space.setName(request.getName());
@@ -195,8 +205,9 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
         if (projectId == null) {
             return List.of();
         }
-        return projectSpaceCache.get(projectId, id -> allSpaces().stream()
-                .filter(space -> id.equals(space.getProjectId()))
+        String tenant = TenantContext.requireTenant();
+        return projectSpaceCache.get(tenant + ":" + projectId, id -> allSpaces().stream()
+                .filter(space -> projectId.equals(space.getProjectId()))
                 .map(Space::getId)
                 .toList());
     }
@@ -230,7 +241,9 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
         if (spaceId == null) {
             return List.of();
         }
-        return descendantCache.get(spaceId, this::computeDescendantIds);
+        String tenant = TenantContext.requireTenant();
+        return descendantCache.get(tenant + ":" + spaceId,
+                ignored -> computeDescendantIds(spaceId));
     }
 
     private List<Long> computeDescendantIds(Long spaceId) {

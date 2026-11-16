@@ -24,6 +24,8 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import com.github.wuzhudexiaopacai.security.TenantContext;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class UserServiceTest {
@@ -44,6 +46,12 @@ class UserServiceTest {
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         when(mapper.insert((SysUser) any())).thenReturn(1);
         when(mapper.updateById((SysUser) any())).thenReturn(1);
+        TenantContext.set("default");
+    }
+
+    @AfterEach
+    void clearTenant() {
+        TenantContext.clear();
     }
 
     @Test
@@ -138,7 +146,7 @@ class UserServiceTest {
 
         service.resetPassword(2L, request);
 
-        verify(sessionValidator).invalidate("viewer");
+        verify(sessionValidator).invalidate("default", "viewer");
         verify(mapper).updateById(org.mockito.ArgumentMatchers.argThat((SysUser user) ->
                 user.getPasswordHash().startsWith("$2a$")
                         && new BCryptPasswordEncoder().matches(
@@ -177,6 +185,7 @@ class UserServiceTest {
     private SysUser user(Long id, String username, String role, String status) {
         SysUser user = new SysUser();
         user.setId(id);
+        user.setTenantId("default");
         user.setUsername(username);
         user.setNickname(username);
         user.setRole(role);

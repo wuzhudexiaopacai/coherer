@@ -7,6 +7,7 @@ import com.github.wuzhudexiaopacai.ota.entity.OtaRollout;
 import com.github.wuzhudexiaopacai.ota.entity.OtaTask;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
@@ -14,6 +15,15 @@ import org.springframework.http.ResponseEntity;
 
 /** 真实 PostgreSQL/Redis 上的 OTA 全链路：灰度、重试、回退。 */
 class OtaFlowIT extends AbstractIntegrationTest {
+
+    /** 重试/灰度是全局扫描；清理历史任务，避免上次运行遗留的 PENDING 任务混入本次断言。 */
+    @BeforeEach
+    void cleanOtaState() {
+        jdbc.update("DELETE FROM ota_task");
+        jdbc.update("DELETE FROM ota_rollout_device");
+        jdbc.update("DELETE FROM ota_rollout");
+        jdbc.update("DELETE FROM firmware");
+    }
 
     @Test
     void rollout_threeBatches_succeedsSequentially() {
@@ -23,17 +33,17 @@ class OtaFlowIT extends AbstractIntegrationTest {
                 "rollout-firmware".getBytes(StandardCharsets.UTF_8));
         String rolloutId = createRollout(firmwareId, deviceIds, 1, 50, 1);
 
-        rolloutService.advance(Long.parseLong(rolloutId));
+        rolloutServiceAdvance(Long.parseLong(rolloutId));
 
         for (int batch = 1; batch <= 3; batch++) {
             assertThat(publisher.otaCommands).hasSize(batch);
             RecordingPublisher.OtaCommand command = publisher.otaCommands.get(batch - 1);
             assertThat(command.attempt()).isEqualTo(1);
             reportProgress(command.taskId(), command.deviceId(), "SUCCESS", 100, 1);
-            rolloutService.advance(Long.parseLong(rolloutId));
+            rolloutServiceAdvance(Long.parseLong(rolloutId));
         }
 
-        OtaRollout rollout = rolloutMapper.selectById(Long.parseLong(rolloutId));
+        OtaRollout rollout = asDefault(() -> rolloutMapper.selectById(Long.parseLong(rolloutId)));
         assertThat(rollout.getStatus()).isEqualTo("SUCCESS");
         assertThat(rollout.getSuccessCount()).isEqualTo(3);
         assertThat(rollout.getFailedCount()).isZero();
@@ -56,7 +66,7 @@ class OtaFlowIT extends AbstractIntegrationTest {
         RecordingPublisher.OtaCommand first = publisher.otaCommands.get(0);
         reportProgress(first.taskId(), first.deviceId(), "FAILED", 0, 1);
 
-        OtaTask pending = taskMapper.selectById(Long.parseLong(taskId));
+        OtaTask pending = asDefault(() -> taskMapper.selectById(Long.parseLong(taskId)));
         assertThat(pending.getStatus()).isEqualTo("PENDING");
         assertThat(pending.getAttempt()).isEqualTo(2);
         assertThat(pending.getNextAttemptAt()).isNotNull();
@@ -70,7 +80,7 @@ class OtaFlowIT extends AbstractIntegrationTest {
         assertThat(retry.attempt()).isEqualTo(2);
         reportProgress(retry.taskId(), retry.deviceId(), "SUCCESS", 100, 2);
 
-        OtaTask done = taskMapper.selectById(Long.parseLong(taskId));
+        OtaTask done = asDefault(() -> taskMapper.selectById(Long.parseLong(taskId)));
         assertThat(done.getStatus()).isEqualTo("SUCCESS");
         assertThat(done.getAttempt()).isEqualTo(2);
     }
@@ -90,7 +100,7 @@ class OtaFlowIT extends AbstractIntegrationTest {
         reportProgress(upgrade.taskId(), deviceId, "SUCCESS", 100, 1);
 
         assertThat(deviceVersion(deviceId)).isEqualTo("1.2.0");
-        OtaTask succeeded = taskMapper.selectById(Long.parseLong(taskId));
+        OtaTask succeeded = asDefault(() -> taskMapper.selectById(Long.parseLong(taskId)));
         assertThat(succeeded.getStatus()).isEqualTo("SUCCESS");
         assertThat(succeeded.getFromVersion()).isEqualTo("1.0.0");
 
@@ -110,6 +120,13 @@ class OtaFlowIT extends AbstractIntegrationTest {
 
         assertThat(deviceVersion(deviceId)).isEqualTo("1.0.0");
         assertThat(oldFirmwareId).isNotBlank();
+    }
+
+    private void rolloutServiceAdvance(long rolloutId) {
+        asDefault(() -> {
+            rolloutService.advance(rolloutId);
+            return null;
+        });
     }
 
     private String deviceVersion(String deviceId) {

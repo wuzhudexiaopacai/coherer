@@ -25,10 +25,10 @@ public class RefreshTokenStore {
     private final StringRedisTemplate redisTemplate;
 
     /** 注册一个新的 refresh jti，返回 jti 供写入 JWT。 */
-    public String issue(String username, long ttlSeconds) {
+    public String issue(String tenantId, String username, long ttlSeconds) {
         String jti = UUID.randomUUID().toString().replace("-", "");
         try {
-            redisTemplate.opsForValue().set(KEY_PREFIX + jti, username,
+            redisTemplate.opsForValue().set(KEY_PREFIX + jti, tenantId + "|" + username,
                     Duration.ofSeconds(Math.max(ttlSeconds, 60)));
             return jti;
         } catch (Exception e) {
@@ -40,13 +40,13 @@ public class RefreshTokenStore {
     /**
      * 消费 jti：存在且属于该用户时删除并返回 true；否则返回 false（重放/已过期）。
      */
-    public boolean consume(String jti, String username) {
+    public boolean consume(String tenantId, String jti, String username) {
         if (jti == null || jti.isBlank()) {
             return false;
         }
         try {
             String stored = redisTemplate.opsForValue().getAndDelete(KEY_PREFIX + jti);
-            return username.equals(stored);
+            return (tenantId + "|" + username).equals(stored);
         } catch (Exception e) {
             log.warn("Refresh Token 消费失败: {}", e.getMessage());
             throw new BizException(503, "刷新服务暂不可用，请稍后重试");

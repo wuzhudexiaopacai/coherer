@@ -25,5 +25,11 @@ export const useProductStore = defineStore('products', () => {
     return products.value.find((item) => item.id === productId)?.name ?? `#${productId}`
   }
 
-  return { products, loading, ensureLoaded, nameOf }
+  /** 租户切换时清空产品缓存。 */
+  function reset() {
+    products.value = []
+    loaded = false
+  }
+
+  return { products, loading, ensureLoaded, nameOf, reset }
 })

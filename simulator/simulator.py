@@ -452,7 +452,8 @@ def main() -> None:
         with open(args.credentials, encoding="utf-8") as f:
             credentials = json.load(f)
         devices = [
-            VirtualDevice(args.host, port, args.tenant, item["deviceId"], args.interval,
+            VirtualDevice(args.host, port, item.get("tenant") or args.tenant,
+                          item["deviceId"], args.interval,
                           tls=args.tls, ca_file=ca_file, insecure=args.insecure,
                           device_secret=item["secret"], ota_fail=args.ota_fail,
                           ota_drop_once=args.ota_drop_once)

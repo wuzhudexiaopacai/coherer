@@ -56,7 +56,8 @@ public class AuditLogService extends ServiceImpl<AuditLogMapper, AuditLog> {
                                 Map<String, Object> detail, String result) {
         try {
             AuditLog auditLog = new AuditLog();
-            auditLog.setTenantId("default");
+            String tenantId = com.github.wuzhudexiaopacai.security.TenantContext.get();
+            auditLog.setTenantId(tenantId == null ? "default" : tenantId);
             auditLog.setUsername(StringUtils.hasText(username) ? username : "system");
             auditLog.setAction(action);
             auditLog.setResource(resource);

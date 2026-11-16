@@ -18,13 +18,15 @@ public class OtaRolloutScheduler {
     @Scheduled(fixedDelayString = "${coherer.ota.rollout-sweep-interval-ms:5000}",
             initialDelayString = "${coherer.ota.rollout-sweep-initial-delay-ms:10000}")
     public void advanceRollouts() {
-        for (Long id : rolloutService.activeRolloutIds()) {
-            try {
-                rolloutService.advance(id);
-            } catch (Exception e) {
-                // 单个批次异常不能阻塞其他批次
-                log.warn("OTA 灰度推进失败 rolloutId={} err={}", id, e.getMessage());
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(() -> {
+            for (Long id : rolloutService.activeRolloutIds()) {
+                try {
+                    rolloutService.advance(id);
+                } catch (Exception e) {
+                    // 单个批次异常不能阻塞其他批次
+                    log.warn("OTA 灰度推进失败 rolloutId={} err={}", id, e.getMessage());
+                }
             }
-        }
+        });
     }
 }

@@ -12,6 +12,7 @@ import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
 import com.github.wuzhudexiaopacai.host.entity.IotHost;
 import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -40,23 +41,49 @@ class MqttAclServiceTest {
         device2.setSpaceId(20L);
         when(deviceLookupService.getByDeviceId("dev-2")).thenReturn(device2);
 
+        Device tenantDevice = new Device();
+        tenantDevice.setDeviceId("dev-acme");
+        tenantDevice.setTenantId("acme");
+        tenantDevice.setSpaceId(30L);
+        when(deviceLookupService.getByDeviceId("dev-acme")).thenReturn(tenantDevice);
+
         // 用户 100：全平台数据范围；用户 101：仅空间 10
         SysUser allSpaceUser = new SysUser();
         allSpaceUser.setId(100L);
+        allSpaceUser.setTenantId("default");
         allSpaceUser.setStatus("ACTIVE");
         allSpaceUser.setSpaceId(null);
         when(userMapper.selectById(100L)).thenReturn(allSpaceUser);
 
         SysUser scopedUser = new SysUser();
         scopedUser.setId(101L);
+        scopedUser.setTenantId("default");
         scopedUser.setStatus("ACTIVE");
         scopedUser.setSpaceId(10L);
         when(userMapper.selectById(101L)).thenReturn(scopedUser);
 
+        SysUser acmeUser = new SysUser();
+        acmeUser.setId(102L);
+        acmeUser.setTenantId("acme");
+        acmeUser.setStatus("ACTIVE");
+        acmeUser.setSpaceId(null);
+        when(userMapper.selectById(102L)).thenReturn(acmeUser);
+
+        SysUser disabledTenantUser = new SysUser();
+        disabledTenantUser.setId(103L);
+        disabledTenantUser.setTenantId("suspended");
+        disabledTenantUser.setStatus("ACTIVE");
+        disabledTenantUser.setSpaceId(null);
+        when(userMapper.selectById(103L)).thenReturn(disabledTenantUser);
+
         when(spaceService.descendantIds(10L)).thenReturn(List.of(10L));
 
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        when(tenantLookup.isActive("default")).thenReturn(true);
+        when(tenantLookup.isActive("acme")).thenReturn(true);
+        when(tenantLookup.isActive("suspended")).thenReturn(false);
         service = new MqttAclService(deviceLookupService, mock(HostLookupService.class),
-                userMapper, spaceService);
+                userMapper, spaceService, tenantLookup);
         ReflectionTestUtils.setField(service, "ingestClientId", "coherer-ingest");
         ReflectionTestUtils.setField(service, "ingestUsername", "service");
     }
@@ -69,8 +96,10 @@ class MqttAclServiceTest {
         host.setTenantId("default");
         host.setStatus("ONLINE");
         when(hostLookup.getByHostId("host_abc")).thenReturn(host);
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        when(tenantLookup.isActive("default")).thenReturn(true);
         MqttAclService hostAcl = new MqttAclService(mock(DeviceLookupService.class),
-                hostLookup, mock(SysUserMapper.class), mock(SpaceService.class));
+                hostLookup, mock(SysUserMapper.class), mock(SpaceService.class), tenantLookup);
         ReflectionTestUtils.setField(hostAcl, "ingestClientId", "coherer-ingest");
         ReflectionTestUtils.setField(hostAcl, "ingestUsername", "service");
 
@@ -121,6 +150,32 @@ class MqttAclServiceTest {
     void authorize_webAccountWithUnknownUser_denies() {
         assertFalse(service.authorize("web-abc", "web:999:1",
                 "default/dev-1/thing/property/report", "subscribe"));
+    }
+
+    @Test
+    void authorize_webAccount_isolatedByTenantPrefix() {
+        assertTrue(service.authorize("web-acme", "web:102:1",
+                "acme/dev-acme/thing/property/report", "subscribe"));
+        assertFalse(service.authorize("web-acme", "web:102:1",
+                "default/dev-1/thing/property/report", "subscribe"));
+        assertTrue(service.authorize("web-acme", "web:102:1",
+                "acme/+/thing/property/report", "subscribe"));
+    }
+
+    @Test
+    void authorize_webAccount_disabledTenant_denies() {
+        assertFalse(service.authorize("web-suspended", "web:103:1",
+                "suspended/dev-x/thing/property/report", "subscribe"));
+    }
+
+    @Test
+    void authorize_device_isolatedByTenantPrefix() {
+        assertTrue(service.authorize("dev-acme", "123",
+                "acme/dev-acme/thing/property/report", "publish"));
+        assertFalse(service.authorize("dev-acme", "123",
+                "default/dev-acme/thing/property/report", "publish"));
+        assertFalse(service.authorize("dev-acme", "123",
+                "acme/dev-1/thing/property/report", "publish"));
     }
 
     @Test

@@ -94,6 +94,10 @@ public class HostStatusService {
     @Scheduled(fixedDelayString = "${coherer.host.online-sweep-interval-ms:60000}",
             initialDelayString = "${coherer.host.online-sweep-initial-delay-ms:30000}")
     public void sweepStaleOnline() {
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(this::doSweepStaleOnline);
+    }
+
+    private void doSweepStaleOnline() {
         List<IotHost> onlineHosts;
         try {
             onlineHosts = hostMapper.selectList(Wrappers.<IotHost>lambdaQuery()

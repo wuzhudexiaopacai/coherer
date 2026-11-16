@@ -265,6 +265,10 @@ public class CommandService extends ServiceImpl<DeviceCommandMapper, DeviceComma
     /** 超时未回执的命令置为 TIMEOUT，避免永久 SENT / PENDING。 */
     @Scheduled(fixedDelayString = "${coherer.command.timeout-sweep-interval-ms:15000}")
     public void sweepTimeouts() {
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(this::doSweepTimeouts);
+    }
+
+    private void doSweepTimeouts() {
         OffsetDateTime deadline = OffsetDateTime.now().minusSeconds(replyTimeoutSeconds);
         try {
             // 正常下发后未回执

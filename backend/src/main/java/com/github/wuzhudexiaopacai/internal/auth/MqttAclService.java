@@ -8,6 +8,7 @@ import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
 import com.github.wuzhudexiaopacai.host.entity.IotHost;
 import com.github.wuzhudexiaopacai.host.service.HostLookupService;
+import com.github.wuzhudexiaopacai.security.TenantContext;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import java.time.Duration;
 import java.util.List;
@@ -39,6 +40,7 @@ public class MqttAclService {
     private final HostLookupService hostLookupService;
     private final SysUserMapper userMapper;
     private final SpaceService spaceService;
+    private final com.github.wuzhudexiaopacai.tenant.service.TenantLookupService tenantService;
 
     @Value("${coherer.mqtt.ingest.client-id}")
     private String ingestClientId;
@@ -56,7 +58,8 @@ public class MqttAclService {
             return false;
         }
         String key = clientId + "|" + username + "|" + topic + "|" + action;
-        return cache.get(key, ignored -> doAuthorize(clientId, username, topic, action));
+        return cache.get(key, ignored -> TenantContext.callBypass(
+                () -> doAuthorize(clientId, username, topic, action)));
     }
 
     private boolean doAuthorize(String clientId, String username, String topic, String action) {
@@ -86,7 +89,8 @@ public class MqttAclService {
             return false;
         }
         String tenant = StringUtils.hasText(device.getTenantId()) ? device.getTenantId() : "default";
-        boolean allowed = tenant.equals(levels[0]) && clientId.equals(levels[1]);
+        boolean allowed = tenantService.isActive(tenant)
+                && tenant.equals(levels[0]) && clientId.equals(levels[1]);
         if (!allowed) {
             log.debug("ACL 拒绝：设备越权 clientId={} topic={} action={}", clientId, topic, action);
         }
@@ -103,16 +107,14 @@ public class MqttAclService {
             return false;
         }
         String tenant = StringUtils.hasText(host.getTenantId()) ? host.getTenantId() : "default";
-        if (!tenant.equals(levels[0]) || !hostId.equals(levels[1])) {
+        if (!tenantService.isActive(tenant)
+                || !tenant.equals(levels[0]) || !hostId.equals(levels[1])) {
             return false;
         }
         return "host".equals(levels[2]) || "sub".equals(levels[2]);
     }
 
     private boolean authorizeWeb(String username, String topic, String action) {
-        if (!"subscribe".equals(action) || !(isTelemetryTopic(topic) || isStatusTopic(topic))) {
-            return false;
-        }
         String[] parts = username.split(":");
         if (parts.length != 3) {
             return false;
@@ -124,10 +126,16 @@ public class MqttAclService {
             return false;
         }
         SysUser user = userMapper.selectById(userId);
-        if (user == null || !"ACTIVE".equals(user.getStatus())) {
+        if (user == null || !"ACTIVE".equals(user.getStatus())
+                || !tenantService.isActive(user.getTenantId())) {
             return false;
         }
-        // 未设置空间 = 全平台数据范围
+        if (!"subscribe".equals(action)
+                || !(isTelemetryTopic(topic, user.getTenantId())
+                || isStatusTopic(topic, user.getTenantId()))) {
+            return false;
+        }
+        // 未设置空间 = 本租户全部空间
         if (user.getSpaceId() == null) {
             return true;
         }
@@ -138,26 +146,28 @@ public class MqttAclService {
             return false;
         }
         Device device = deviceLookupService.getByDeviceId(deviceId);
-        if (device == null || device.getSpaceId() == null) {
+        if (device == null || device.getSpaceId() == null
+                || !user.getTenantId().equals(device.getTenantId())) {
             return false;
         }
-        List<Long> allowedSpaces = spaceService.descendantIds(user.getSpaceId());
+        List<Long> allowedSpaces = TenantContext.callAs(user.getTenantId(),
+                () -> spaceService.descendantIds(user.getSpaceId()));
         return allowedSpaces.contains(device.getSpaceId());
     }
 
-    private boolean isTelemetryTopic(String topic) {
+    private boolean isTelemetryTopic(String topic, String tenantId) {
         String[] levels = topic.split("/");
         return levels.length == 5
-                && "default".equals(levels[0])
+                && tenantId.equals(levels[0])
                 && "thing".equals(levels[2])
                 && "property".equals(levels[3])
                 && "report".equals(levels[4]);
     }
 
-    private boolean isStatusTopic(String topic) {
+    private boolean isStatusTopic(String topic, String tenantId) {
         String[] levels = topic.split("/");
         return levels.length == 3
-                && "default".equals(levels[0])
+                && tenantId.equals(levels[0])
                 && "status".equals(levels[2]);
     }
 }

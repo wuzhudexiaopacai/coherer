@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Lock, User } from '@element-plus/icons-vue'
+import { Lock, OfficeBuilding, User } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth'
 
@@ -9,17 +9,21 @@ const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
 
-const form = reactive({ username: 'admin', password: '' })
+const form = reactive({ tenantCode: 'default', username: 'admin', password: '' })
 const loading = ref(false)
 
 async function submit() {
+  if (!form.tenantCode.trim()) {
+    ElMessage.warning('请输入租户代码')
+    return
+  }
   if (!form.username.trim() || !form.password) {
     ElMessage.warning('请输入用户名和密码')
     return
   }
   loading.value = true
   try {
-    await auth.login(form.username.trim(), form.password)
+    await auth.login(form.tenantCode.trim(), form.username.trim(), form.password)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     router.push(redirect)
   } catch (error) {
@@ -52,6 +56,15 @@ async function submit() {
 
       <form class="login-form" @submit.prevent="submit">
         <label class="field">
+          <span class="field-label">租户代码</span>
+          <el-input
+            v-model="form.tenantCode"
+            placeholder="default"
+            :prefix-icon="OfficeBuilding"
+            autocomplete="organization"
+          />
+        </label>
+        <label class="field">
           <span class="field-label">用户名</span>
           <el-input v-model="form.username" placeholder="admin" :prefix-icon="User" autocomplete="username" />
         </label>
@@ -71,7 +84,7 @@ async function submit() {
         </el-button>
       </form>
 
-      <p class="hint">开发环境默认账号 admin / Admin@123（由 backend/.env 的 COHERER_ADMIN_PASSWORD 初始化）</p>
+      <p class="hint">开发环境默认租户 default，账号 admin / Admin@123（由 backend/.env 的 COHERER_ADMIN_PASSWORD 初始化）</p>
     </div>
     <p class="copyright">Coherer · 企业级物联网设备管理平台</p>
   </div>

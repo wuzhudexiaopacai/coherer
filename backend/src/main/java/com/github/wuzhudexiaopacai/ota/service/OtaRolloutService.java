@@ -73,6 +73,7 @@ public class OtaRolloutService {
     private final DeviceMapper deviceMapper;
     private final SpaceService spaceService;
     private final ProjectScopeService projectScopeService;
+    private final com.github.wuzhudexiaopacai.tenant.service.TenantLookupService tenantLookupService;
     private final OtaService otaService;
     private final MeterRegistry meterRegistry;
 
@@ -80,8 +81,9 @@ public class OtaRolloutService {
     public OtaRolloutDetailVO create(OtaRolloutCreateRequest request, DataScope scope,
                                      String operator) {
         Firmware firmware = firmwareService.require(request.getFirmwareId());
+        String tenantId = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
         Long projectId = request.getProjectId() == null
-                ? ProjectService.DEFAULT_PROJECT_ID : request.getProjectId();
+                ? tenantLookupService.defaultProjectId(tenantId) : request.getProjectId();
         List<Long> projectSpaceIds = projectScopeService.resolveSpaceIds(scope, projectId, null);
         List<Device> targets = resolveTargets(request, firmware, scope, projectSpaceIds);
         if (targets.isEmpty()) {
@@ -124,6 +126,7 @@ public class OtaRolloutService {
         int index = 0;
         for (Device device : targets) {
             OtaRolloutDevice member = new OtaRolloutDevice();
+            member.setTenantId(rollout.getTenantId());
             member.setRolloutId(rollout.getId());
             member.setDeviceId(device.getDeviceId());
             member.setBatchNo(index / batchSize + 1);

@@ -27,8 +27,11 @@ public class SysUser {
     /** ADMIN / OPERATOR / VIEWER */
     private String role;
 
-    /** 数据范围：空间 ID（含子空间）；NULL 表示全部空间 */
+    /** 数据范围：空间 ID（含子空间）；NULL 表示本租户全部空间 */
     private Long spaceId;
+
+    /** 1 表示平台管理员，可管理租户；普通租户管理员为 0 */
+    private Integer platformAdmin;
 
     /** ACTIVE / DISABLED */
     private String status;

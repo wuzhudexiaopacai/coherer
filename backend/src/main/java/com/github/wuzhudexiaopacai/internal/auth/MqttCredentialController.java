@@ -47,7 +47,8 @@ public class MqttCredentialController {
         String username = "web:" + user.getId() + ":" + expiry;
         String password = HmacSigner.signHex(webSecret, clientId + "|" + username);
         return ApiResponse.ok(new MqttCredentialVO(
-                wsUrl, clientId, username, password, ttlSeconds, user.getSpaceId()));
+                wsUrl, clientId, username, password, ttlSeconds,
+                user.getTenantId(), user.getSpaceId()));
     }
 
     public record MqttCredentialVO(
@@ -56,6 +57,7 @@ public class MqttCredentialController {
             String username,
             String password,
             int ttlSeconds,
+            String tenantId,
             Long spaceId) {
     }
 }

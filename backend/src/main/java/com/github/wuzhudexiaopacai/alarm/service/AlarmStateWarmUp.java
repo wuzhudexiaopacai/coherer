@@ -27,19 +27,21 @@ public class AlarmStateWarmUp {
 
     @EventListener(ApplicationReadyEvent.class)
     public void warmUp() {
-        try {
-            List<AlarmRecord> active = alarmRecordService.list(
-                    Wrappers.<AlarmRecord>lambdaQuery()
-                            .select(AlarmRecord::getId, AlarmRecord::getRuleId,
-                                    AlarmRecord::getDeviceId)
-                            .in(AlarmRecord::getStatus, List.of("TRIGGERED", "ACKNOWLEDGED")));
-            if (active.isEmpty()) {
-                return;
+        com.github.wuzhudexiaopacai.security.TenantContext.runBypass(() -> {
+            try {
+                List<AlarmRecord> active = alarmRecordService.list(
+                        Wrappers.<AlarmRecord>lambdaQuery()
+                                .select(AlarmRecord::getId, AlarmRecord::getRuleId,
+                                        AlarmRecord::getDeviceId)
+                                .in(AlarmRecord::getStatus, List.of("TRIGGERED", "ACKNOWLEDGED")));
+                if (active.isEmpty()) {
+                    return;
+                }
+                alarmStateService.warmUp(active);
+                log.info("告警状态预热完成，活动告警 {} 条", active.size());
+            } catch (Exception e) {
+                log.warn("告警状态预热失败（不影响启动）: {}", e.getMessage());
             }
-            alarmStateService.warmUp(active);
-            log.info("告警状态预热完成，活动告警 {} 条", active.size());
-        } catch (Exception e) {
-            log.warn("告警状态预热失败（不影响启动）: {}", e.getMessage());
-        }
+        });
     }
 }

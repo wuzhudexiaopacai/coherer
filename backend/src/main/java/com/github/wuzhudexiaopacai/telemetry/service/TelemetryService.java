@@ -113,7 +113,9 @@ public class TelemetryService {
     }
 
     public List<TelemetryVO> recent(String deviceId, int limit) {
-        return tdStore.recent(deviceId, limit);
+        return tdStore.recent(
+                com.github.wuzhudexiaopacai.security.TenantContext.requireTenant(),
+                deviceId, limit);
     }
 
     private Map<String, Object> validate(List<ThingModel> properties, Map<String, Object> params) {

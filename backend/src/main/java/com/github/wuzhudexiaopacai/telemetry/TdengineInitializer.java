@@ -79,8 +79,9 @@ public class TdengineInitializer implements InitializingBean {
             log.warn("增加 space_id tag 失败: {}", message);
             return;
         }
-        List<Device> devices = deviceMapper.selectList(Wrappers.<Device>lambdaQuery()
-                .select(Device::getDeviceId, Device::getSpaceId));
+        List<Device> devices = com.github.wuzhudexiaopacai.security.TenantContext.callBypass(
+                () -> deviceMapper.selectList(Wrappers.<Device>lambdaQuery()
+                        .select(Device::getDeviceId, Device::getSpaceId)));
         int updated = 0;
         for (Device device : devices) {
             if (device.getSpaceId() == null) {

@@ -13,6 +13,8 @@ public class OtaRolloutDevice {
     @TableId(type = IdType.ASSIGN_ID)
     private Long id;
 
+    private String tenantId;
+
     private Long rolloutId;
 
     private String deviceId;

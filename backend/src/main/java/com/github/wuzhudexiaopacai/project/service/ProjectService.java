@@ -29,11 +29,10 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class ProjectService extends ServiceImpl<ProjectMapper, Project> {
 
-    public static final long DEFAULT_PROJECT_ID = 1L;
-
     private final SpaceService spaceService;
     private final IotHostMapper hostMapper;
     private final DeviceMapper deviceMapper;
+    private final com.github.wuzhudexiaopacai.tenant.service.TenantLookupService tenantLookupService;
 
     public List<ProjectVO> list(DataScope scope) {
         List<Project> projects = list(Wrappers.<Project>lambdaQuery()
@@ -56,7 +55,7 @@ public class ProjectService extends ServiceImpl<ProjectMapper, Project> {
                 ? request.getCode().trim() : "prj_" + UUID.randomUUID().toString().substring(0, 8);
         ensureCodeUnique(code, null);
         Project project = new Project();
-        project.setTenantId("default");
+        project.setTenantId(com.github.wuzhudexiaopacai.security.TenantContext.requireTenant());
         project.setCode(code);
         project.setName(request.getName().trim());
         project.setStatus(request.getStatus() == null
@@ -93,7 +92,8 @@ public class ProjectService extends ServiceImpl<ProjectMapper, Project> {
 
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        if (DEFAULT_PROJECT_ID == id) {
+        String tenantId = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
+        if (tenantLookupService.defaultProjectId(tenantId).equals(id)) {
             throw new BizException(409, "默认项目不能删除");
         }
         require(id);

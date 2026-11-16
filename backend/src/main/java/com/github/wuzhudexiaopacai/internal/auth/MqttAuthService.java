@@ -4,9 +4,13 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.github.wuzhudexiaopacai.device.entity.Device;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
 import com.github.wuzhudexiaopacai.host.entity.IotHost;
+import com.github.wuzhudexiaopacai.auth.entity.SysUser;
+import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.security.HmacSigner;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
+import com.github.wuzhudexiaopacai.security.TenantContext;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Locale;
@@ -37,6 +41,8 @@ public class MqttAuthService {
 
     private final DeviceMapper deviceMapper;
     private final HostLookupService hostLookupService;
+    private final SysUserMapper userMapper;
+    private final TenantLookupService tenantLookupService;
     private final SecretCipher secretCipher;
 
     @Value("${coherer.mqtt.ingest.client-id}")
@@ -73,8 +79,9 @@ public class MqttAuthService {
                 return false;
             }
             long expiry;
+            long userId;
             try {
-                Long.parseLong(parts[1]);
+                userId = Long.parseLong(parts[1]);
                 expiry = Long.parseLong(parts[2]);
             } catch (NumberFormatException e) {
                 return false;
@@ -83,19 +90,26 @@ public class MqttAuthService {
                 log.debug("认证失败 clientId={} 原因=Web 凭证已过期", clientId);
                 return false;
             }
+            SysUser user = TenantContext.callBypass(() -> userMapper.selectById(userId));
+            if (user == null || !"ACTIVE".equals(user.getStatus())
+                    || !tenantLookupService.isActive(user.getTenantId())) {
+                return false;
+            }
             String expected = HmacSigner.signHex(webSecret, clientId + "|" + username);
             return constantTimeEquals(password.toLowerCase(Locale.ROOT), expected);
         }
 
         // 边缘主机签名认证
         if (clientId.startsWith("host_")) {
-            IotHost host = hostLookupService.getByHostId(clientId);
+            IotHost host = TenantContext.callBypass(
+                    () -> hostLookupService.getByHostId(clientId));
             if (host == null) {
                 log.debug("认证失败 clientId={} 原因=主机不存在", clientId);
                 return false;
             }
-            if ("DISABLED".equals(host.getStatus())) {
-                log.debug("认证失败 clientId={} 原因=主机已禁用", clientId);
+            if ("DISABLED".equals(host.getStatus())
+                    || !tenantLookupService.isActive(host.getTenantId())) {
+                log.debug("认证失败 clientId={} 原因=主机或租户已禁用", clientId);
                 return false;
             }
             String secret = secretCipher.decrypt(host.getSecretCipher());
@@ -119,15 +133,17 @@ public class MqttAuthService {
             return false;
         }
 
-        Device device = deviceMapper.selectOne(Wrappers.<Device>lambdaQuery()
-                .eq(Device::getDeviceId, clientId)
-                .last("limit 1"));
+        Device device = TenantContext.callBypass(() -> deviceMapper.selectOne(
+                Wrappers.<Device>lambdaQuery()
+                        .eq(Device::getDeviceId, clientId)
+                        .last("limit 1")));
         if (device == null) {
             log.debug("认证失败 clientId={} 原因=设备不存在", clientId);
             return false;
         }
-        if ("DISABLED".equals(device.getStatus())) {
-            log.debug("认证失败 clientId={} 原因=设备已禁用", clientId);
+        if ("DISABLED".equals(device.getStatus())
+                || !tenantLookupService.isActive(device.getTenantId())) {
+            log.debug("认证失败 clientId={} 原因=设备或租户已禁用", clientId);
             return false;
         }
 

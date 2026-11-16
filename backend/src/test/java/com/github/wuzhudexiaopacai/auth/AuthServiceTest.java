@@ -17,6 +17,8 @@ import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.security.JwtService;
 import com.github.wuzhudexiaopacai.security.RefreshTokenStore;
 import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
+import com.github.wuzhudexiaopacai.tenant.entity.Tenant;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,15 +39,25 @@ class AuthServiceTest {
         BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
         refreshTokenStore = mock(RefreshTokenStore.class);
-        when(refreshTokenStore.issue(any(), org.mockito.ArgumentMatchers.anyLong()))
+        when(refreshTokenStore.issue(any(), any(), org.mockito.ArgumentMatchers.anyLong()))
                 .thenReturn("jti-test");
-        when(refreshTokenStore.consume(any(), any())).thenReturn(true);
+        when(refreshTokenStore.consume(any(), any(), any())).thenReturn(true);
+        Tenant tenant = new Tenant();
+        tenant.setId("default");
+        tenant.setName("默认租户");
+        tenant.setStatus("ACTIVE");
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        when(tenantLookup.require("default")).thenReturn(tenant);
+        when(tenantLookup.requireActive("default")).thenReturn(tenant);
+        when(tenantLookup.get("default")).thenReturn(tenant);
         authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService(),
                 mock(AuditLogService.class), mock(TokenSessionValidator.class),
-                refreshTokenStore, new SimpleMeterRegistry());
+                refreshTokenStore, tenantLookup, new SimpleMeterRegistry());
 
         user = new SysUser();
         user.setId(1L);
+        user.setTenantId("default");
+        user.setPlatformAdmin(0);
         user.setUsername("admin");
         user.setNickname("管理员");
         user.setRole("ADMIN");
@@ -57,6 +69,7 @@ class AuthServiceTest {
     @Test
     void login_validCredentials_returnsTokens() {
         LoginRequest request = new LoginRequest();
+        request.setTenantCode("default");
         request.setUsername("admin");
         request.setPassword("Admin@123");
 
@@ -70,6 +83,7 @@ class AuthServiceTest {
     @Test
     void login_wrongPassword_throws401() {
         LoginRequest request = new LoginRequest();
+        request.setTenantCode("default");
         request.setUsername("admin");
         request.setPassword("wrong");
 
@@ -81,6 +95,7 @@ class AuthServiceTest {
     @Test
     void login_repeatedFailures_blocksWith429() {
         LoginRequest request = new LoginRequest();
+        request.setTenantCode("default");
         request.setUsername("admin");
         request.setPassword("wrong");
         for (int i = 0; i < 5; i++) {
@@ -95,12 +110,14 @@ class AuthServiceTest {
     @Test
     void login_successResetsFailureCounter() {
         LoginRequest wrong = new LoginRequest();
+        wrong.setTenantCode("default");
         wrong.setUsername("admin");
         wrong.setPassword("wrong");
         for (int i = 0; i < 4; i++) {
             assertThrows(BizException.class, () -> authService.login(wrong, "127.0.0.1"));
         }
         LoginRequest right = new LoginRequest();
+        right.setTenantCode("default");
         right.setUsername("admin");
         right.setPassword("Admin@123");
         authService.login(right, "127.0.0.1");
@@ -112,6 +129,7 @@ class AuthServiceTest {
     void login_disabledUser_throws403() {
         user.setStatus("DISABLED");
         LoginRequest request = new LoginRequest();
+        request.setTenantCode("default");
         request.setUsername("admin");
         request.setPassword("Admin@123");
 
@@ -149,7 +167,7 @@ class AuthServiceTest {
         JwtService jwtService = new JwtService(SECRET, 7200, 604800);
         RefreshRequest request = new RefreshRequest();
         request.setRefreshToken(jwtService.issueRefresh(user, "jti-replay"));
-        when(refreshTokenStore.consume("jti-replay", "admin")).thenReturn(false);
+        when(refreshTokenStore.consume("default", "jti-replay", "admin")).thenReturn(false);
 
         BizException exception = assertThrows(BizException.class, () -> authService.refresh(request));
         assertEquals(401, exception.getCode());

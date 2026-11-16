@@ -35,32 +35,32 @@ class RefreshTokenStoreTest {
 
     @Test
     void issue_storesJtiWithTtl() {
-        String jti = store.issue("admin", 604800);
+        String jti = store.issue("default", "admin", 604800);
 
         assertEquals(32, jti.length());
-        verify(valueOperations).set(eq("coherer:refresh:" + jti), eq("admin"),
+        verify(valueOperations).set(eq("coherer:refresh:" + jti), eq("default|admin"),
                 eq(Duration.ofSeconds(604800)));
     }
 
     @Test
     void consume_existingJti_returnsTrueAndDeletes() {
-        when(valueOperations.getAndDelete("coherer:refresh:jti-1")).thenReturn("admin");
+        when(valueOperations.getAndDelete("coherer:refresh:jti-1")).thenReturn("default|admin");
 
-        assertTrue(store.consume("jti-1", "admin"));
+        assertTrue(store.consume("default", "jti-1", "admin"));
     }
 
     @Test
     void consume_wrongUser_returnsFalse() {
-        when(valueOperations.getAndDelete("coherer:refresh:jti-1")).thenReturn("admin");
+        when(valueOperations.getAndDelete("coherer:refresh:jti-1")).thenReturn("default|admin");
 
-        assertFalse(store.consume("jti-1", "viewer"));
+        assertFalse(store.consume("default", "jti-1", "viewer"));
     }
 
     @Test
     void consume_missingJti_returnsFalse() {
         when(valueOperations.getAndDelete(anyString())).thenReturn(null);
 
-        assertFalse(store.consume("jti-x", "admin"));
+        assertFalse(store.consume("default", "jti-x", "admin"));
     }
 
     @Test
@@ -69,7 +69,7 @@ class RefreshTokenStoreTest {
                 .when(valueOperations).set(anyString(), anyString(), any(Duration.class));
 
         BizException exception = assertThrows(BizException.class,
-                () -> store.issue("admin", 60));
+                () -> store.issue("default", "admin", 60));
         assertEquals(503, exception.getCode());
     }
 
@@ -79,7 +79,7 @@ class RefreshTokenStoreTest {
                 .thenThrow(new RuntimeException("redis down"));
 
         BizException exception = assertThrows(BizException.class,
-                () -> store.consume("jti-1", "admin"));
+                () -> store.consume("default", "jti-1", "admin"));
         assertEquals(503, exception.getCode());
     }
 }

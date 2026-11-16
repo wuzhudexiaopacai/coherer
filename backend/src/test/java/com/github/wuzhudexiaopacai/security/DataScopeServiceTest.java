@@ -31,6 +31,7 @@ class DataScopeServiceTest {
         userMapper = mock(SysUserMapper.class);
         spaceService = mock(SpaceService.class);
         service = new DataScopeService(userMapper, spaceService);
+        TenantContext.set("default");
     }
 
     @Test
@@ -132,6 +133,7 @@ class DataScopeServiceTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+        TenantContext.clear();
     }
 
     @Test

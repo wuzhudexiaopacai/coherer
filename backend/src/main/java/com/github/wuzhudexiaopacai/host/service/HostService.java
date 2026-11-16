@@ -43,11 +43,14 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
     private final DeviceMapper deviceMapper;
     private final DeviceLookupService deviceLookupService;
     private final HostLookupService hostLookupService;
+    private final com.github.wuzhudexiaopacai.tenant.service.TenantLookupService tenantLookupService;
 
     @Transactional(rollbackFor = Exception.class)
     public HostRegisterResult register(HostRegisterRequest request, DataScope scope) {
+        String tenantId = com.github.wuzhudexiaopacai.security.TenantContext.requireTenant();
         Long spaceId = request.getSpaceId() == null
-                ? (scope.unrestricted() ? SpaceService.DEFAULT_SPACE_ID : scope.rootSpaceId())
+                ? (scope.unrestricted()
+                        ? tenantLookupService.defaultSpaceId(tenantId) : scope.rootSpaceId())
                 : request.getSpaceId();
         if (spaceId == null) {
             throw new BizException(403, "当前用户未分配数据空间，无法注册主机");
@@ -62,7 +65,7 @@ public class HostService extends ServiceImpl<IotHostMapper, IotHost> {
         String hostId = Ids.hostId();
         String secret = Ids.deviceSecret();
         IotHost host = new IotHost();
-        host.setTenantId("default");
+        host.setTenantId(tenantId);
         host.setHostId(hostId);
         host.setName(request.getName());
         host.setSpaceId(spaceId);

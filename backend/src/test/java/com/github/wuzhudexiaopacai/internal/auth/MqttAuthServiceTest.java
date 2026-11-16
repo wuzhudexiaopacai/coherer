@@ -4,11 +4,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
+import com.github.wuzhudexiaopacai.auth.entity.SysUser;
+import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.device.mapper.DeviceMapper;
 import com.github.wuzhudexiaopacai.host.entity.IotHost;
 import com.github.wuzhudexiaopacai.host.service.HostLookupService;
 import com.github.wuzhudexiaopacai.security.HmacSigner;
 import com.github.wuzhudexiaopacai.security.SecretCipher;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -22,8 +25,17 @@ class MqttAuthServiceTest {
 
     @BeforeEach
     void setUp() {
+        SysUserMapper userMapper = mock(SysUserMapper.class);
+        SysUser user = new SysUser();
+        user.setId(1L);
+        user.setTenantId("default");
+        user.setStatus("ACTIVE");
+        org.mockito.Mockito.when(userMapper.selectById(1L)).thenReturn(user);
+        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        org.mockito.Mockito.when(tenantLookup.isActive("default")).thenReturn(true);
         service = new MqttAuthService(mock(DeviceMapper.class),
-                mock(HostLookupService.class), mock(SecretCipher.class));
+                mock(HostLookupService.class), userMapper, tenantLookup,
+                mock(SecretCipher.class));
         ReflectionTestUtils.setField(service, "ingestClientId", "coherer-ingest");
         ReflectionTestUtils.setField(service, "ingestUsername", "service");
         ReflectionTestUtils.setField(service, "ingestSecret", INGEST_SECRET);

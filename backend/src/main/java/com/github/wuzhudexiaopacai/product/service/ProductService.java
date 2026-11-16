@@ -28,7 +28,7 @@ public class ProductService extends ServiceImpl<ProductMapper, Product> {
     @Transactional(rollbackFor = Exception.class)
     public ProductVO create(ProductCreateRequest request) {
         Product product = new Product();
-        product.setTenantId("default");
+        product.setTenantId(com.github.wuzhudexiaopacai.security.TenantContext.requireTenant());
         product.setProductKey(Ids.productKey());
         product.setName(request.getName());
         product.setCategory(request.getCategory());

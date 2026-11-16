@@ -9,6 +9,7 @@ import com.github.wuzhudexiaopacai.host.service.HostDeviceAccessService;
 import com.github.wuzhudexiaopacai.host.service.HostStatusService;
 import com.github.wuzhudexiaopacai.ota.service.OtaProgressService;
 import com.github.wuzhudexiaopacai.ota.service.OtaPublisher;
+import com.github.wuzhudexiaopacai.security.TenantContext;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -309,14 +310,14 @@ public class MqttGateway implements CommandPublisher, OtaPublisher {
         // MQTT 入口不起新 trace 会与上游断链；每条消息独立 span 便于按 traceId 追踪
         Observation.createNotStarted("mqtt.message", observationRegistry)
                 .lowCardinalityKeyValue("kind", kind)
-                .observe(() -> {
+                .observe(() -> TenantContext.runAs(levels[0], () -> {
                     if (kind.startsWith("host-") && !"host-status".equals(kind)
                             && !"host-command-reply".equals(kind)) {
                         handleHosted(kind, levels[0], levels[1], levels[3], topic, payload);
                     } else {
                         handle(kind, levels[0], levels[1], topic, payload);
                     }
-                });
+                }));
     }
 
     private String topicKind(String[] levels) {

@@ -39,6 +39,13 @@ export const useProjectStore = defineStore('projects', () => {
     }
   }
 
+  /** 租户切换时清空租户内项目缓存。 */
+  function reset() {
+    projects.value = []
+    loaded = false
+    setCurrent(null)
+  }
+
   function nameOf(id?: string | null): string {
     if (!id) return '未选择项目'
     return projects.value.find((item) => item.id === id)?.name ?? '—'
@@ -51,6 +58,7 @@ export const useProjectStore = defineStore('projects', () => {
     current,
     ensureLoaded,
     setCurrent,
+    reset,
     nameOf
   }
 })

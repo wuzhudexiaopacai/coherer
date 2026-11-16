@@ -110,11 +110,15 @@ export interface MqttCredential {
   username: string
   password: string
   ttlSeconds: number
+  tenantId?: string
   spaceId?: string | null
 }
 
 export interface UserInfo {
   id: string
+  tenantId?: string
+  tenantName?: string
+  platformAdmin?: boolean
   username: string
   nickname: string
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
@@ -194,12 +198,44 @@ export interface SpaceNode {
 
 export interface UserItem {
   id: string
+  tenantId?: string
+  platformAdmin?: boolean
   username: string
   nickname: string
   role: 'ADMIN' | 'OPERATOR' | 'VIEWER'
   spaceId?: string | null
   status: 'ACTIVE' | 'DISABLED'
   createdAt?: string
+}
+
+export interface Tenant {
+  id: string
+  name: string
+  status: 'ACTIVE' | 'DISABLED'
+  plan: string
+  description?: string
+  userCount: number
+  projectCount: number
+  deviceCount: number
+  createdAt: string
+  updatedAt?: string
+}
+
+export interface TenantCreateBody {
+  code: string
+  name: string
+  plan?: string
+  description?: string
+  adminUsername: string
+  adminPassword: string
+  adminNickname?: string
+}
+
+export interface TenantUpdateBody {
+  name?: string
+  status?: 'ACTIVE' | 'DISABLED'
+  plan?: string
+  description?: string
 }
 
 export interface CommandRecord {
