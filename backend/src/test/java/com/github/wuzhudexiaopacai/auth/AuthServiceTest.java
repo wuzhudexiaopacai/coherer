@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.github.wuzhudexiaopacai.auth.dto.LoginRequest;
@@ -30,6 +31,8 @@ class AuthServiceTest {
 
     private SysUserMapper userMapper;
     private RefreshTokenStore refreshTokenStore;
+    private AuditLogService auditLogService;
+    private TenantLookupService tenantLookup;
     private AuthService authService;
     private SysUser user;
 
@@ -46,13 +49,17 @@ class AuthServiceTest {
         tenant.setId("default");
         tenant.setName("默认租户");
         tenant.setStatus("ACTIVE");
-        TenantLookupService tenantLookup = mock(TenantLookupService.class);
-        when(tenantLookup.require("default")).thenReturn(tenant);
-        when(tenantLookup.requireActive("default")).thenReturn(tenant);
-        when(tenantLookup.get("default")).thenReturn(tenant);
+        TenantLookupService lookup = mock(TenantLookupService.class);
+        tenantLookup = lookup;
+        when(lookup.require("default")).thenReturn(tenant);
+        when(lookup.get("default")).thenReturn(tenant);
+        when(lookup.requireActive("default")).thenReturn(tenant);
+        when(lookup.get("disabled-tenant")).thenReturn(disabledTenant());
+        when(lookup.get("missing")).thenReturn(null);
+        auditLogService = mock(AuditLogService.class);
         authService = new AuthService(userMapper, encoder, jwtService, new LoginAttemptService(),
-                mock(AuditLogService.class), mock(TokenSessionValidator.class),
-                refreshTokenStore, tenantLookup, new SimpleMeterRegistry());
+                auditLogService, mock(TokenSessionValidator.class),
+                refreshTokenStore, lookup, new SimpleMeterRegistry());
 
         user = new SysUser();
         user.setId(1L);
@@ -136,6 +143,45 @@ class AuthServiceTest {
         BizException exception = assertThrows(BizException.class,
                 () -> authService.login(request, "127.0.0.1"));
         assertEquals(403, exception.getCode());
+    }
+
+    @Test
+    void login_unknownTenant_auditedAndNotFound() {
+        LoginRequest request = new LoginRequest();
+        request.setTenantCode("missing");
+        request.setUsername("admin");
+        request.setPassword("Admin@123");
+
+        BizException exception = assertThrows(BizException.class,
+                () -> authService.login(request, "127.0.0.1"));
+
+        assertEquals(404, exception.getCode());
+        verify(auditLogService).recordAsFailure("admin", "127.0.0.1", "LOGIN_FAILURE",
+                "auth", java.util.Map.of("reason", "unknown_tenant", "tenant", "missing"));
+    }
+
+    @Test
+    void login_disabledTenant_auditedAndForbidden() {
+        LoginRequest request = new LoginRequest();
+        request.setTenantCode("disabled-tenant");
+        request.setUsername("admin");
+        request.setPassword("Admin@123");
+
+        BizException exception = assertThrows(BizException.class,
+                () -> authService.login(request, "127.0.0.1"));
+
+        assertEquals(403, exception.getCode());
+        verify(auditLogService).recordAsFailure("admin", "127.0.0.1", "LOGIN_FAILURE",
+                "auth", java.util.Map.of("reason", "tenant_disabled",
+                        "tenant", "disabled-tenant"));
+    }
+
+    private Tenant disabledTenant() {
+        Tenant tenant = new Tenant();
+        tenant.setId("disabled-tenant");
+        tenant.setName("已禁用租户");
+        tenant.setStatus("DISABLED");
+        return tenant;
     }
 
     @Test

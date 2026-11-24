@@ -545,6 +545,27 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 `{tenant}/+/thing/property/report`。
 **验证**：前端 Vitest 断言登出清理；build 通过；手工 A 租户登出后登录 B，项目/设备列表不串数据。
 
+### 14.5 本地缓存会绕过租户拦截器（最隐蔽的越权点）
+
+**现象**：设备缓存命中后，另一个租户的用户可以用该 `deviceId` 下发命令 / 查影子 / 发起 OTA。
+**原因**：`DeviceLookupService` 缓存键只有 `deviceId`，命中时不执行 SQL，`TenantLineInnerInterceptor`
+没有机会追加 `tenant_id`；而 `DeviceAccessService` 只看空间数据范围，另一租户的全平台管理员
+`DataScope.all()` 会放行任意 spaceId。
+**修复**：`DeviceLookupService` / `HostLookupService` 读取后显式比较实体租户与当前上下文，不一致返回
+null；系统路径必须 `runBypass`。同类 `ThingModelService`、`AlarmRuleService` 缓存只在 MQTT 消费侧使用，
+后续若被 REST 复用必须同样加租户维度键。
+**验证**：`DeviceLookupServiceTest` / `HostLookupServiceTest` 覆盖“A 租户预热缓存 → B 租户读不到”；
+`TenantIT.cachedDeviceIsNotVisibleToAnotherTenant` 先真实预热缓存，再断言 B 租户命令/遥测/影子/OTA 均 404，
+且 `RecordingPublisher` 没有向 A 租户主题发布任何消息。
+
+### 14.6 MQTT 已连接设备不会因租户禁用自动断开
+
+**现象**：禁用租户后，已建立连接的设备仍能上报遥测、写库。
+**原因**：EMQX 只在连接/ACL 回调时校验；禁用租户不会主动踢线。
+**修复**：`MqttGateway.dispatch` 在建立上下文前先 `tenantLookupService.isActive(主题租户)`，
+不可用直接丢弃并计数 `coherer.mqtt.dropped{reason=tenant_inactive}`。
+**验证**：`MqttGatewayDispatchTest` 覆盖 ACTIVE 放行、DISABLED 丢弃、未知主题不查租户。
+
 ## 15. 提交索引
 
 | 提交 | 内容 |
@@ -572,6 +593,7 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 | `d493974` | 告警活动集合批量读取 |
 | `f1f42a7` | TDengine space_id tag/保留期 |
 | `042c79d` | 设备事件上报 |
+| `1ea86d8` | 多租户：租户上下文/数据隔离/租户管理 |
 
 ## 16. 仍建议优先处理
 
@@ -580,5 +602,7 @@ docker-java 的 `/info` 请求返回 400，Testcontainers 无法完成发现。
 3. 调度线程池显式配置，遥测 flush 与巡检隔离
 4. ~~后端/前端镜像与 Nginx 同源部署~~（已完成并验证）
 5. ~~CI 镜像构建与推送~~（已加入 GHCR job，需推送到 GitHub 后验证）
-6. Testcontainers 集成测试与 E2E
-7. OTA 批量灰度、失败重试与版本回退
+6. ~~集成测试与 E2E~~（Compose 真实 PG/Redis + E2E 脚本已完成；外部 EMQX 集成测试仍待补）
+7. ~~OTA 批量灰度、失败重试与版本回退~~（已完成）
+8. MQTT 已连接设备的租户禁用踢线（当前靠上行丢弃，未主动断开连接）
+9. 租户级配额（设备数/消息速率）与计费维度

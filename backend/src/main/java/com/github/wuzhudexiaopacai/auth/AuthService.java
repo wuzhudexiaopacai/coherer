@@ -38,8 +38,16 @@ public class AuthService {
 
     public AuthResponse login(LoginRequest request, String clientIp) {
         String tenantId = request.getTenantCode().trim();
-        Tenant tenant = tenantLookupService.require(tenantId);
+        Tenant tenant = tenantLookupService.get(tenantId);
+        if (tenant == null) {
+            // 不建立租户上下文也要留痕：未知租户代码同样可能是枚举/撞库行为
+            auditLogService.recordAsFailure(request.getUsername(), clientIp, "LOGIN_FAILURE",
+                    "auth", Map.of("reason", "unknown_tenant", "tenant", tenantId));
+            throw new BizException(404, "租户不存在");
+        }
         if (!"ACTIVE".equals(tenant.getStatus())) {
+            auditLogService.recordAsFailure(request.getUsername(), clientIp, "LOGIN_FAILURE",
+                    "auth", Map.of("reason", "tenant_disabled", "tenant", tenantId));
             throw new BizException(403, "租户已禁用");
         }
         return TenantContext.callAs(tenantId, () -> doLogin(request, tenant, clientIp));

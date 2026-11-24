@@ -12,6 +12,7 @@ import com.github.wuzhudexiaopacai.ota.service.OtaPublisher;
 import com.github.wuzhudexiaopacai.security.TenantContext;
 import com.github.wuzhudexiaopacai.shadow.service.ShadowService;
 import com.github.wuzhudexiaopacai.telemetry.service.TelemetryService;
+import com.github.wuzhudexiaopacai.tenant.service.TenantLookupService;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
@@ -79,6 +80,7 @@ public class MqttGateway implements CommandPublisher, OtaPublisher {
     private final HostStatusService hostStatusService;
     private final HostDeviceAccessService hostDeviceAccessService;
     private final OtaProgressService otaProgressService;
+    private final TenantLookupService tenantLookupService;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
     private final ObservationRegistry observationRegistry;
@@ -298,13 +300,20 @@ public class MqttGateway implements CommandPublisher, OtaPublisher {
         }
     }
 
-    private void dispatch(String topic, byte[] payload) {
+    /** 包级可见便于单元测试租户守卫；生产路径由 Paho 回调进入。 */
+    void dispatch(String topic, byte[] payload) {
         String[] levels = topic.split("/");
         if (levels.length < 3) {
             return;
         }
         String kind = topicKind(levels);
         if (kind == null) {
+            return;
+        }
+        // 已连接设备不会因租户禁用被 Broker 主动断开：上行入口必须再校验租户状态
+        if (!tenantLookupService.isActive(levels[0])) {
+            log.debug("租户不可用，丢弃 MQTT 上行 topic={}", topic);
+            meterRegistry.counter("coherer.mqtt.dropped", "reason", "tenant_inactive").increment();
             return;
         }
         // MQTT 入口不起新 trace 会与上游断链；每条消息独立 span 便于按 traceId 追踪

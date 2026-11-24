@@ -38,6 +38,7 @@ class SpaceServiceTest {
     private DeviceMapper deviceMapper;
     private IotHostMapper hostMapper;
     private ProjectMapper projectMapper;
+    private TenantLookupService tenantLookup;
     private SpaceService service;
 
     @BeforeEach
@@ -50,7 +51,7 @@ class SpaceServiceTest {
         deviceMapper = mock(DeviceMapper.class);
         hostMapper = mock(IotHostMapper.class);
         projectMapper = mock(ProjectMapper.class);
-        TenantLookupService tenantLookup = mock(TenantLookupService.class);
+        tenantLookup = mock(TenantLookupService.class);
         when(tenantLookup.defaultProjectId("default")).thenReturn(1L);
         TenantContext.set("default");
         service = new SpaceService(deviceMapper, hostMapper, projectMapper, tenantLookup);
@@ -136,6 +137,17 @@ class SpaceServiceTest {
         when(spaceMapper.selectCount(any())).thenReturn(1L);
 
         assertThrows(BizException.class, () -> service.delete(1L));
+    }
+
+    @Test
+    void delete_defaultSpace_rejected() {
+        when(tenantLookup.defaultSpaceId("default")).thenReturn(1L);
+        when(spaceMapper.selectById(1L)).thenReturn(space(1L, null, "默认空间", 0));
+
+        BizException exception = assertThrows(BizException.class, () -> service.delete(1L));
+
+        assertEquals(409, exception.getCode());
+        verify(spaceMapper, times(0)).deleteById(1L);
     }
 
     @Test

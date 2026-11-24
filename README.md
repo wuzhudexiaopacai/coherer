@@ -150,7 +150,7 @@ curl -H "Authorization: Bearer <accessToken>" \
 ## 测试与接口文档
 
 ```bash
-# 单元测试（322 个）
+# 单元测试（340 个）
 cd backend && mvn test
 
 # 一键单元 + 集成测试 + 覆盖率门禁
@@ -165,8 +165,8 @@ cd backend && mvn test
 open http://localhost:8081/swagger-ui.html
 ```
 
-CI 在 `mvn clean verify` 中执行：单元测试 + 9 个真实 PG/Redis 集成测试 + JaCoCo
-行/分支覆盖率门禁（当前基线 60%/45%，实测 67.7%/53.5%，后续按 ratchet 逐步提高到 80%/70%）。
+CI 在 `mvn clean verify` 中执行：单元测试 + 10 个真实 PG/Redis 集成测试 + JaCoCo
+行/分支覆盖率门禁（当前基线 60%/45%，实测 68.2%/54.0%，后续按 ratchet 逐步提高到 80%/70%）。
 
 ## TLS 与备份恢复
 

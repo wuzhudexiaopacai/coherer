@@ -30,7 +30,8 @@ public class TenantCreateRequest {
     private String adminUsername;
 
     @NotBlank(message = "初始管理员密码不能为空")
-    @Size(min = 8, max = 64, message = "密码长度 8-64")
+    @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,64}$",
+            message = "密码需 8-64 位且同时包含字母和数字")
     private String adminPassword;
 
     @Size(max = 64, message = "管理员昵称最长 64 字符")

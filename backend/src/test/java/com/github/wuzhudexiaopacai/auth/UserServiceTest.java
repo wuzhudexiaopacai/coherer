@@ -18,6 +18,7 @@ import com.github.wuzhudexiaopacai.auth.entity.SysUser;
 import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.UserVO;
 import com.github.wuzhudexiaopacai.common.BizException;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -33,6 +34,7 @@ class UserServiceTest {
     private SysUserMapper mapper;
     private SpaceService spaceService;
     private TokenSessionValidator sessionValidator;
+    private DataScopeService dataScopeService;
     private UserService service;
 
     @BeforeEach
@@ -42,7 +44,9 @@ class UserServiceTest {
         mapper = mock(SysUserMapper.class);
         spaceService = mock(SpaceService.class);
         sessionValidator = mock(TokenSessionValidator.class);
-        service = new UserService(new BCryptPasswordEncoder(), spaceService, sessionValidator);
+        dataScopeService = mock(DataScopeService.class);
+        service = new UserService(new BCryptPasswordEncoder(), spaceService, sessionValidator,
+                dataScopeService);
         ReflectionTestUtils.setField(service, "baseMapper", mapper);
         when(mapper.insert((SysUser) any())).thenReturn(1);
         when(mapper.updateById((SysUser) any())).thenReturn(1);
@@ -147,10 +151,24 @@ class UserServiceTest {
         service.resetPassword(2L, request);
 
         verify(sessionValidator).invalidate("default", "viewer");
+        verify(dataScopeService).invalidate("viewer");
         verify(mapper).updateById(org.mockito.ArgumentMatchers.argThat((SysUser user) ->
                 user.getPasswordHash().startsWith("$2a$")
                         && new BCryptPasswordEncoder().matches(
                         "newpass123", user.getPasswordHash())));
+    }
+
+    @Test
+    void update_spaceChange_invalidatesDataScopeCache() {
+        SysUser viewer = user(2L, "viewer", "VIEWER", "ACTIVE");
+        when(mapper.selectById(2L)).thenReturn(viewer);
+        when(spaceService.exists(20L)).thenReturn(true);
+        UserUpdateRequest request = new UserUpdateRequest();
+        request.setSpaceId(20L);
+
+        service.update(2L, request, "admin");
+
+        verify(dataScopeService).invalidate("viewer");
     }
 
     @Test

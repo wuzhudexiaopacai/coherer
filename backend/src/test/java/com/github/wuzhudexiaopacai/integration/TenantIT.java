@@ -3,14 +3,22 @@ package com.github.wuzhudexiaopacai.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.github.wuzhudexiaopacai.device.service.DeviceLookupService;
+import com.github.wuzhudexiaopacai.security.TenantContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 
 /**
  * 多租户端到端隔离：开通租户后，认证、项目、产品、空间、设备、主机全部按租户隔离；
@@ -19,6 +27,58 @@ import org.springframework.http.ResponseEntity;
 class TenantIT extends AbstractIntegrationTest {
 
     private static final String TENANT_ADMIN_PASSWORD = "Tenant@123";
+
+    @Autowired
+    private DeviceLookupService deviceLookupService;
+
+    /**
+     * 回归：本地设备缓存的键只有 deviceId，命中时不走 SQL，租户拦截器不生效。
+     * 必须先由租户 A 的真实流量预热缓存，再验证租户 B 无法借缓存拿到 A 的设备。
+     */
+    @Test
+    void cachedDeviceIsNotVisibleToAnotherTenant() {
+        String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        String codeA = "ca" + suffix;
+        String codeB = "cb" + suffix;
+        createTenant(codeA, "缓存租户 A");
+        createTenant(codeB, "缓存租户 B");
+        String tokenA = login(codeA, "admin", TENANT_ADMIN_PASSWORD);
+        String tokenB = login(codeB, "admin", TENANT_ADMIN_PASSWORD);
+
+        String productA = createProduct(tokenA, "cache-product-a");
+        String deviceA = registerDevice(tokenA, productA);
+        String firmwareA = uploadFirmwareAs(tokenA, productA, "1.0.0");
+        String productB = createProduct(tokenB, "cache-product-b");
+        String firmwareB = uploadFirmwareAs(tokenB, productB, "1.0.0");
+
+        // 模拟租户 A 的 MQTT 上行：设备行进入本 JVM 的 30 秒本地缓存
+        assertThat(TenantContext.callAs(codeA,
+                () -> deviceLookupService.getByDeviceId(deviceA))).isNotNull();
+        // 同一缓存行对租户 B 必须不可见
+        assertThat(TenantContext.callAs(codeB,
+                () -> deviceLookupService.getByDeviceId(deviceA))).isNull();
+
+        // 租户 B 通过 REST 下发命令：必须 404，且不能向租户 A 的主题发布
+        ResponseEntity<JsonNode> command = exchange(tokenB, HttpMethod.POST,
+                "/api/devices/" + deviceA + "/commands",
+                Map.of("identifier", "reboot", "params", Map.of()));
+        assertThat(command.getStatusCode().value()).isEqualTo(404);
+        assertThat(publisher.commands).isEmpty();
+
+        // 读路径同样不可见
+        ResponseEntity<JsonNode> telemetry = exchange(tokenB, HttpMethod.GET,
+                "/api/devices/" + deviceA + "/telemetry", null);
+        assertThat(telemetry.getStatusCode().value()).isEqualTo(404);
+        ResponseEntity<JsonNode> shadow = exchange(tokenB, HttpMethod.GET,
+                "/api/devices/" + deviceA + "/shadow", null);
+        assertThat(shadow.getStatusCode().value()).isEqualTo(404);
+
+        // OTA：即使固件属于租户 B，目标设备仍必须按租户 A 之外不可见处理
+        ResponseEntity<JsonNode> ota = exchange(tokenB, HttpMethod.POST, "/api/ota/tasks",
+                Map.of("deviceId", deviceA, "firmwareId", firmwareB, "maxAttempts", 1));
+        assertThat(ota.getStatusCode().value()).isEqualTo(404);
+        assertThat(firmwareA).isNotBlank();
+    }
 
     @Test
     void tenantProvisioningAndDataIsolation() {
@@ -213,5 +273,24 @@ class TenantIT extends AbstractIntegrationTest {
                 .as("register host -> %s %s", response.getStatusCode(), response.getBody())
                 .isTrue();
         return response.getBody().path("data").path("hostId").asText();
+    }
+
+    private String uploadFirmwareAs(String token, String productId, String version) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new ByteArrayResource("tenant-it-firmware".getBytes()) {
+            @Override
+            public String getFilename() {
+                return "firmware.bin";
+            }
+        });
+        HttpHeaders headers = bearer(token);
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+        ResponseEntity<JsonNode> response = rest.exchange(
+                "/api/ota/firmwares?productId=" + productId + "&version=" + version,
+                HttpMethod.POST, new HttpEntity<>(body, headers), JsonNode.class);
+        assertThat(response.getStatusCode().is2xxSuccessful())
+                .as("upload firmware -> %s %s", response.getStatusCode(), response.getBody())
+                .isTrue();
+        return response.getBody().path("data").path("id").asText();
     }
 }

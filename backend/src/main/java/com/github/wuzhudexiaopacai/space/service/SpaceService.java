@@ -181,6 +181,11 @@ public class SpaceService extends ServiceImpl<SpaceMapper, Space> {
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
         requireSpace(id);
+        // 默认空间是租户注册设备/主机的兜底归属，删除后租户将无法再创建资源
+        Long defaultSpaceId = tenantLookupService.defaultSpaceId(TenantContext.requireTenant());
+        if (defaultSpaceId != null && defaultSpaceId.equals(id)) {
+            throw new BizException(409, "默认空间不能删除");
+        }
         Long childCount = baseMapper.selectCount(
                 Wrappers.<Space>lambdaQuery().eq(Space::getParentId, id));
         if (childCount != null && childCount > 0) {

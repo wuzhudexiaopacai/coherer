@@ -11,6 +11,7 @@ import com.github.wuzhudexiaopacai.auth.mapper.SysUserMapper;
 import com.github.wuzhudexiaopacai.auth.vo.UserVO;
 import com.github.wuzhudexiaopacai.common.BizException;
 import com.github.wuzhudexiaopacai.common.PageResult;
+import com.github.wuzhudexiaopacai.security.DataScopeService;
 import com.github.wuzhudexiaopacai.security.TokenSessionValidator;
 import com.github.wuzhudexiaopacai.space.service.SpaceService;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
     private final PasswordEncoder passwordEncoder;
     private final SpaceService spaceService;
     private final TokenSessionValidator sessionValidator;
+    private final DataScopeService dataScopeService;
 
     public PageResult<UserVO> page(long current, long size, String keyword) {
         Page<SysUser> page = page(new Page<>(current, size),
@@ -110,6 +112,8 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         if (revoke) {
             sessionValidator.invalidate(user.getTenantId(), user.getUsername());
         }
+        // 数据范围可能已收窄/放大：立即失效 30 秒缓存，避免旧范围继续放行
+        dataScopeService.invalidate(user.getUsername());
         return toVO(user);
     }
 
@@ -121,6 +125,7 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
         user.setTokenVersion((user.getTokenVersion() == null ? 0 : user.getTokenVersion()) + 1);
         updateById(user);
         sessionValidator.invalidate(user.getTenantId(), user.getUsername());
+        dataScopeService.invalidate(user.getUsername());
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -133,6 +138,8 @@ public class UserService extends ServiceImpl<SysUserMapper, SysUser> {
             requireOtherActiveAdmin(user.getId());
         }
         removeById(id);
+        sessionValidator.invalidate(user.getTenantId(), user.getUsername());
+        dataScopeService.invalidate(user.getUsername());
     }
 
     private void requireOtherActiveAdmin(Long excludeId) {

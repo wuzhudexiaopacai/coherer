@@ -85,6 +85,18 @@ class TenantControllerTest {
     }
 
     @Test
+    void create_weakAdminPassword_isBadRequest() throws Exception {
+        mvc.perform(post("/api/tenants")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"TEN1\",\"name\":\"租户一\","
+                                + "\"adminUsername\":\"tenant_admin\","
+                                + "\"adminPassword\":\"password\"}")
+                        .principal(auth))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400));
+    }
+
+    @Test
     void update_invalidStatus_isBadRequest() throws Exception {
         mvc.perform(put("/api/tenants/t1")
                         .contentType(MediaType.APPLICATION_JSON)

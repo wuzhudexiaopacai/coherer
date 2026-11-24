@@ -654,13 +654,16 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 
 | 键模式 | 类型 | TTL | 用途 |
 |---|---|---|---|
-| `coherer:auth:device:{deviceId}` | String(JSON) | 5 min | 设备认证缓存（secretCipher/状态） |
-| `coherer:status:device:{deviceId}` | String | 无 | 在线状态 `1`/`0`，上下线事件维护 |
-| `coherer:latest:device:{deviceId}` | Hash | 24 h | 最新遥测快照（属性→值） |
-| `coherer:cmd:{commandId}` | String | 命令超时 + 5 min | 命令状态缓存，避免回调丢失 |
-| `coherer:token:refresh:{jti}` | String | 7 d | 刷新令牌白名单；值为 `tenantId\|username`，防跨租户重放 |
-| `coherer:auth:login:{tenantId\|username}` | String | 5 min | 登录失败计数（另叠加客户端 IP 维度） |
-| `coherer:dedup:device:{deviceId}` | String | 10 min | 消息幂等去重窗口 |
+| `coherer:status:device:{deviceId}` | String | 在线 TTL（默认 120s） | 设备在线标记，上下线与心跳维护 |
+| `coherer:status:host:{hostId}` | String | 在线 TTL（默认 180s） | 主机在线标记，LWT + 心跳维护 |
+| `coherer:refresh:{jti}` | String | 7 d | 刷新令牌白名单；值为 `tenantId\|username`，防跨租户重放 |
+| `coherer:telemetry:dedup:{deviceId}:{key}` | String | 10 min | 遥测幂等去重窗口 |
+| `coherer:alarm:since:{ruleId}:{deviceId}` | String | 1 h | 告警条件首次成立时间（持续时长计时） |
+| `coherer:alarm:active:dev:{deviceId}` | Set | 24 h | 该设备当前活动的规则集合 |
+| `coherer:command:rate:{deviceId}` | String | 1 min | 单设备命令发送限流计数 |
+
+> 登录失败计数（`LoginAttemptService`）目前是单实例 Caffeine 内存实现，不落 Redis；
+> 设备/主机/命令等 ID 全局唯一，键不再叠加租户前缀，跨租户访问由服务层显式校验。
 
 ### 5.4 多租户上下文与隔离
 
@@ -678,9 +681,13 @@ VALUES (1730000000000, '{"temperature":23.5,"humidity":55.0}');
 
 - MyBatis-Plus `TenantLineInnerInterceptor` 为所有业务表自动追加 `tenant_id = ?`；`tenant` 表自身忽略。
 - 上下文缺失时 `TenantContext.requireTenant()` 抛异常（fail-closed），禁止“忘加条件即全量查询”。
-- TDengine 所有查询显式带 `tenant_id` tag；Caffeine 缓存键包含租户；Redis 登录/刷新值包含租户。
+- **本地缓存命中不走 SQL**，拦截器无法兜底：`DeviceLookupService` / `HostLookupService` 读取后
+  显式比较实体租户与当前上下文，不一致按“不存在”返回；系统路径必须 `runBypass` 才能跨租户读取。
+- TDengine 所有查询显式带 `tenant_id` tag；空间/项目/看板/物模型等 Caffeine 缓存键包含租户。
 - 用户名与产品 key 使用 `(tenant_id, code) WHERE deleted=0` 部分唯一索引，跨租户可重复。
 - 设备/主机 ID 仍全局唯一（MQTT clientId 直接作为主键使用），跨租户按 `tenant_id` 校验，不依赖 ID 碰撞。
+- MQTT 上行入口先校验主题租户 ACTIVE，再建立上下文；租户禁用后既有连接的消息也会被丢弃。
+- 用户空间/角色/状态变更后立即失效 `DataScopeService` 的 30 秒用户缓存。
 - 平台管理员只是 `default` 租户内带 `ROLE_PLATFORM_ADMIN` 的用户，业务 API 仍只看 `default` 数据；
   租户管理接口仅允许查看租户元数据与聚合计数。
 
